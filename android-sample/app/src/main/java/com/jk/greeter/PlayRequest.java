@@ -9,17 +9,6 @@ import com.google.flatbuffers.*;
 
 @SuppressWarnings("unused")
 public final class PlayRequest extends Table {
-
-  static { System.loadLibrary("Greeter"); }
-
-  public static PlayResult play(String path) {
-    FlatBufferBuilder builder = new FlatBufferBuilder(0);
-    builder.finish(createPlayRequest(builder, builder.createString(path)));
-    byte[] reply = _play(builder.dataBuffer().array());
-    return PlayResult.getRootAsPlayResult(ByteBuffer.wrap(reply));
-  }
-  private static native byte[] _play(byte[] req);
-
   public static PlayRequest getRootAsPlayRequest(ByteBuffer _bb) { return getRootAsPlayRequest(_bb, new PlayRequest()); }
   public static PlayRequest getRootAsPlayRequest(ByteBuffer _bb, PlayRequest obj) { _bb.order(ByteOrder.LITTLE_ENDIAN); return (obj.__assign(_bb.getInt(_bb.position()) + _bb.position(), _bb)); }
   public void __init(int _i, ByteBuffer _bb) { bb_pos = _i; bb = _bb; }

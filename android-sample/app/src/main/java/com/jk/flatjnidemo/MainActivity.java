@@ -1,11 +1,12 @@
 package com.jk.flatjnidemo;
 
-import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
-import android.util.Log;
+import android.support.v7.app.AppCompatActivity;
+import android.view.View;
+import android.widget.TextView;
 
+import com.jk.greeter.Greeter;
 import com.jk.greeter.HelloReply;
-import com.jk.greeter.HelloRequest;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -14,7 +15,14 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        HelloReply reply = HelloRequest.sayHello("kkkkkkkkkkkkkkkkkkkkk");
-        Log.e("JK", "isOK=" + reply.isOK());
+        final TextView tv = (TextView) findViewById(R.id.tv);
+        tv.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                tv.setText("...");
+                HelloReply replay = Greeter.sayHello("hello, jk");
+                tv.setText(replay.name());
+            }
+        });
     }
 }

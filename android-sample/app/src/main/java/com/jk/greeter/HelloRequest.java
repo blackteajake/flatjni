@@ -9,17 +9,6 @@ import com.google.flatbuffers.*;
 
 @SuppressWarnings("unused")
 public final class HelloRequest extends Table {
-
-  static { System.loadLibrary("Greeter"); }
-
-  public static HelloReply sayHello(String message) {
-    FlatBufferBuilder builder = new FlatBufferBuilder(0);
-    builder.finish(createHelloRequest(builder, builder.createString(message)));
-    byte[] reply = _sayHello(builder.dataBuffer().array());
-    return HelloReply.getRootAsHelloReply(ByteBuffer.wrap(reply));
-  }
-  private static native byte[] _sayHello(byte[] req);
-
   public static HelloRequest getRootAsHelloRequest(ByteBuffer _bb) { return getRootAsHelloRequest(_bb, new HelloRequest()); }
   public static HelloRequest getRootAsHelloRequest(ByteBuffer _bb, HelloRequest obj) { _bb.order(ByteOrder.LITTLE_ENDIAN); return (obj.__assign(_bb.getInt(_bb.position()) + _bb.position(), _bb)); }
   public void __init(int _i, ByteBuffer _bb) { bb_pos = _i; bb = _bb; }
