@@ -803,6 +803,62 @@ void GenStruct(StructDef &struct_def, std::string *code_ptr) {
     code += struct_def.fixed ? "Struct" : "Table";
     code += lang_.open_curly;
   }
+
+  // Generate java native method with RPC definition
+  if (!struct_def.fixed && lang_.language == IDLOptions::kJava) {
+      std::string jni_code = "";
+      std::string service_name = "";
+      for (auto it = parser_.services_.vec.begin();
+           it != parser_.services_.vec.end(); ++it) {
+          ServiceDef &service_def = **it;
+          for (auto it_rpc = service_def.calls.vec.begin();
+               it_rpc != service_def.calls.vec.end(); ++it_rpc) {
+              RPCCall &call = **it_rpc;
+              if (struct_def.name == call.request->name) {
+                  service_name = service_def.name;
+                  jni_code += "  public static " + call.response->name + " " + call.name + "(";
+                  for (auto it_field = struct_def.fields.vec.begin();
+                       it_field != struct_def.fields.vec.end(); ++it_field) {
+                      FieldDef &field = **it_field;
+                      if (IsScalar(field.value.type.base_type)
+                              || field.value.type.base_type == BASE_TYPE_STRING) {
+                          if (jni_code[jni_code.length() - 1] != '(')
+                              jni_code += ", ";
+                          jni_code += field.value.type.base_type == BASE_TYPE_STRING ?
+                                      "String"
+                                    : GenTypeBasic(DestinationType(field.value.type, false));
+                          jni_code += " " + field.name;
+                      }
+                  }
+
+                  jni_code += ") {\n";
+                  jni_code += "    FlatBufferBuilder builder = new FlatBufferBuilder(0);\n";
+                  jni_code += "    builder.finish(create" + call.request->name + "(builder";
+                  for (auto it_field = struct_def.fields.vec.begin();
+                       it_field != struct_def.fields.vec.end(); ++it_field) {
+                      FieldDef &field = **it_field;
+                      if (IsScalar(field.value.type.base_type)
+                              || field.value.type.base_type == BASE_TYPE_STRING) {
+                          jni_code += ", ";
+                          jni_code += field.value.type.base_type == BASE_TYPE_STRING ?
+                                      "builder.createString(" + field.name + ")" : field.name;
+                      }
+                  }
+                  jni_code += "));\n";
+                  jni_code += "    byte[] reply = _" + call.name + "(builder.dataBuffer().array());\n";
+                  jni_code += "    return " + call.response->name + ".getRootAs"
+                          + call.response->name + "(ByteBuffer.wrap(reply));\n";
+                  jni_code += "  }\n";
+                  jni_code += "  private static native byte[] _" + call.name + "(byte[] req);\n";
+              }
+          }
+      }
+      if (!jni_code.empty()) {
+          code += "\n  static { System.loadLibrary(\"" + service_name + "\");" + " }\n\n";
+          code += jni_code + "\n";
+      }
+  }
+
   if (!struct_def.fixed) {
     // Generate a special accessor for the table that when used as the root
     // of a FlatBuffer

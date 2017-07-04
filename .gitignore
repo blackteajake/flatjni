@@ -73,3 +73,8 @@ Testing/Temporary
 net/**/obj
 node_modules/
 build/
+flatjni.config
+flatjni.creator  
+flatjni.creator.user  
+flatjni.files  
+flatjni.includes

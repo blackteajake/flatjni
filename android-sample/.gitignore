@@ -1,0 +1,11 @@
+build
+app/build
+*.iml
+.gradle
+local.properties
+.idea/workspace.xml
+.idea/libraries
+.DS_Store
+captures
+.externalNativeBuild
+app/src/main/cpp/flatjni/.vscode
