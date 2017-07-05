@@ -21,11 +21,11 @@ LOCAL_PATH := $(call my-dir)
 #####################################################
 include $(CLEAR_VARS)
 
-LOCAL_SRC_FILES := flatjni.cpp fjlog.cpp
+LOCAL_SRC_FILES := flatjni.cpp
 
 LOCAL_MODULE := Greeter
 
-LOCAL_C_INCLUDES := .
+LOCAL_C_INCLUDES := . include
 					
 LOCAL_CFLAGS := -D__ANDROID__
 

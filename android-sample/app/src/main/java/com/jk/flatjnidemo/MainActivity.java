@@ -21,7 +21,7 @@ public class MainActivity extends AppCompatActivity {
             public void onClick(View v) {
                 tv.setText("...");
                 HelloReply replay = Greeter.sayHello("hello, jk");
-                tv.setText(replay.name());
+                tv.setText(replay.name() + " distance=" + replay.distance());
             }
         });
     }

@@ -1,118 +1,76 @@
 #include <stdio.h>
 #include <jni.h>
 
-#include "fjlog.h"
+#include <android/log.h>
 
-#define VERSION_BUILD   				"0.1"
-#define JAVA_BGM_PLAYER_CLASS_PATH    	"com/jk/greeter/HelloRequest"
+#define TAG "Greeter"
+#define LOGD(...)          __android_log_print(ANDROID_LOG_DEBUG, TAG, ##__VA_ARGS__)
+#define LOGI(...)          __android_log_print(ANDROID_LOG_INFO, TAG, ##__VA_ARGS__)
+#define LOGE(...)          __android_log_print(ANDROID_LOG_ERROR, TAG, ##__VA_ARGS__)
 
-// static JavaVM *_vm = NULL;
-// static player_t _player = NULL;
-// static JNIEnv *_env = NULL;
+#define VERSION_STR "libGreeter.so 0.1 Build " __DATE__
+#define JAVA_CLASS_PATH "com/jk/greeter/Greeter"
 
-// static jclass _player_cls = NULL;
-// static jmethodID _player_onData = NULL;
-// static jmethodID _player_onComplete = NULL;
+#include "hello_generated.h"
 
-// static void pcm_output(int is_first_chunk, int sample_rate, unsigned char *pcm, size_t len) {
-//     ASSERT(_env != NULL, "env from decoder thread should not be NULL after AttachCurrentThread");
-//     jbyteArray byteArray = (*_env)->NewByteArray (_env, len);
-//     (*_env)->SetByteArrayRegion(_env, byteArray, 0, len, (const jbyte *)pcm);
-//     (*_env)->CallStaticVoidMethod(_env, _player_cls, _player_onData, is_first_chunk, sample_rate, byteArray);
-//     (*_env)->DeleteLocalRef(_env, byteArray);
-// }
+using namespace com::jk::greeter;
+using namespace flatbuffers;
 
-// static void decode_complete() {
-//     (*_env)->CallStaticVoidMethod(_env, _player_cls, _player_onComplete);
-// }
 
-// static void attach_thread() {
-//     if ((*_vm)->AttachCurrentThread(_vm, &_env, NULL) != JNI_OK) {
-//         LOGE("AttachCurrentThread failed!");
-//         abort();
-//     }
-// }
+static FlatBufferBuilder *sayHello(const HelloRequest *request) {
+    return CreateHelloReplyBufferBuilder(true, 1, request->message()->c_str(), 100, 888.0,
+                                         9999.9999);
+}
 
-// static void detach_thread() {
-//     (*_vm)->DetachCurrentThread(_vm);
-// }
-
-// static void native_set_log(JNIEnv *env, jclass cls, jstring jpath) {
-//     const char *path = (*env)->GetStringUTFChars (env, jpath, NULL);
-//     debug_init(LOG_LEVEL_DEBUG, "bgm", path);
-//     (*env)->ReleaseStringUTFChars (env, jpath, path);
-// }
-
-// static jint native_create(JNIEnv *env, jclass cls, jint outputSampleRate, jint srcQuality) {
-//     if (_player == NULL) {
-//         _player = player_create(outputSampleRate, srcQuality, pcm_output, decode_complete, attach_thread, detach_thread);
-//         if (_player == NULL)
-//             return -1;
-//     }
-//     return 0;
-// }
-
-// static void native_release(JNIEnv *env, jclass cls) {
-//     if (_player != NULL) {
-//         player_release(_player);
-//         _player = NULL;
-//     }
-// }
-
-// static jint native_set_source(JNIEnv *env, jclass cls, jstring juri) {
-//     int ret = 0;
-//     const char *uri = (*env)->GetStringUTFChars (env, juri, NULL);
-//     ret = player_set_source(_player, uri);
-//     (*env)->ReleaseStringUTFChars (env, juri, uri);
-//     return ret;
-// }
-
-// static jint native_play(JNIEnv *env, jclass cls) {
-//     return player_play(_player);
-// }
-
-// static jint native_pause(JNIEnv *env, jclass cls) {
-//     return player_pause(_player);
-// }
-
-// static void native_stop(JNIEnv *env, jclass cls) {
-//     player_stop(_player);
-// }
-
-static jbyteArray _sayHello(JNIEnv *env, jclass cls, jbyteArray req) {
-    LOGI("say hello from c++");
-
-    jbyteArray byteArray = env->NewByteArray (0);
+static FlatBufferBuilder *play(const PlayRequest *request) {
     return nullptr;
 }
 
-JNIEXPORT jint JNICALL JNI_OnLoad (JavaVM *vm, void *unused)
-{
-    JNIEnv* env = NULL;
-    jclass player_cls;
+//////////////////////////////////////////////////////////////////////////////////////////////
 
-    static JNINativeMethod methods[] = {
-        {"_sayHello",      "([B)[B",                   (void*)_sayHello}
-    };
+static jbyteArray _sayHello(JNIEnv *env, jclass cls, jbyteArray req) {
+    const char *buf = (const char *) env->GetByteArrayElements(req, NULL);
+    const HelloRequest *request = GetHelloRequest(buf);
+    const FlatBufferBuilder *bb = sayHello(request);
+    jbyteArray byteArray = env->NewByteArray(bb->GetSize());
+    env->SetByteArrayRegion(byteArray, 0, bb->GetSize(), (const jbyte *) bb->GetBufferPointer());
+    delete bb;
+    env->ReleaseByteArrayElements(req, (jbyte *) buf, JNI_ABORT);
+    return byteArray;
+}
 
-    LOGI("loading flatjni version:%s", VERSION_BUILD);
+static jbyteArray _play(JNIEnv *env, jclass cls, jbyteArray req) {
+    return nullptr;
+}
 
-    if (vm->GetEnv((void**) &env, JNI_VERSION_1_6) != JNI_OK) {
-        LOGE("get env error, abort!");
-        abort ();
+static JNINativeMethod methods[] = {
+        {"_sayHello", "([B)[B", (void *) _sayHello},
+        {"_play",     "([B)[B", (void *) _play}};
+
+jint JNICALL JNI_OnLoad(JavaVM *vm, void *unused) {
+    JNIEnv *env = NULL;
+    LOGI(VERSION_STR);
+
+    if (vm->GetEnv((void **) &env, JNI_VERSION_1_6) != JNI_OK) {
+        LOGE("GetEnv failed!");
+        return -1;
     }
 
-    LOGI("find class");
-    player_cls = env->FindClass(JAVA_BGM_PLAYER_CLASS_PATH);
-    if (!player_cls) {
-        LOGE("native registration unable to find class '%s'!", JAVA_BGM_PLAYER_CLASS_PATH);
-        abort();
+    jclass cls = env->FindClass(JAVA_CLASS_PATH);
+    if (!cls) {
+        LOGE("FindClass(\"%s\") failed!", JAVA_CLASS_PATH);
+        return -1;
     }
 
-    LOGI("register native methods");
-    if(env->RegisterNatives(player_cls, methods, sizeof(methods) / sizeof(methods[0])) < 0) {
-        LOGE("native registration failed!");
-        abort();
+    int native_count = sizeof(methods) / sizeof(methods[0]);
+    LOGD("register native method for class %s", JAVA_CLASS_PATH);
+    for (int i=0; i<native_count; ++i) {
+        LOGD("method: %s %s", methods[i].name, methods[i].signature);
+    }
+
+    if (env->RegisterNatives(cls, methods, native_count) < 0) {
+        LOGE("RegisterNatives failed!");
+        return -1;
     }
 
     // LOGI("find onData method id");
@@ -127,7 +85,7 @@ JNIEXPORT jint JNICALL JNI_OnLoad (JavaVM *vm, void *unused)
 
     // _vm = vm;
     // _player_cls = (*env)->NewGlobalRef(env, player_cls);
-    env->DeleteLocalRef (player_cls);
-    LOGI("bgm player loaded!");
+    env->DeleteLocalRef(cls);
+    LOGI("JNI_OnLoad ok.");
     return JNI_VERSION_1_6;
 }

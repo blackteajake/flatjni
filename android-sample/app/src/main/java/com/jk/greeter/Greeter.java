@@ -13,9 +13,9 @@ final public class Greeter {
   static { System.loadLibrary("Greeter"); }
 
   public static HelloReply sayHello(String message) {
-    FlatBufferBuilder builder = new FlatBufferBuilder(0);
+    FlatBufferBuilder builder = new FlatBufferBuilder();
     builder.finish(HelloRequest.createHelloRequest(builder, builder.createString(message)));
-    byte[] reply = _sayHello(builder.dataBuffer().array());
+    byte[] reply = _sayHello(builder.sizedByteArray());
     return HelloReply.getRootAsHelloReply(ByteBuffer.wrap(reply));
   }
   public static PlayResult play(String path) {
