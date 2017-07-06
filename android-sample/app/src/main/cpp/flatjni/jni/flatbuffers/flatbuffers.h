@@ -1434,6 +1434,8 @@ class FlatBufferBuilder
     Finish(root.o, file_identifier, false);
   }
 
+  bool isFinished() const { return finished; }
+
   /// @brief Finish a buffer with a 32 bit size field pre-fixed (size of the
   /// buffer following the size field). These buffers are NOT compatible
   /// with standard buffers created by Finish, i.e. you can't call GetRoot

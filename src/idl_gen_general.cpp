@@ -96,6 +96,7 @@ const LanguageParameters& GetLangParams(IDLOptions::Language lang) {
       "",
       "",
       "import java.nio.*;\nimport java.lang.*;\nimport java.util.*;\n"
+        "import android.support.annotation.Nullable;\n"
         "import com.google.flatbuffers.*;\n\n@SuppressWarnings(\"unused\")\n",
       {
         "/**",
@@ -189,18 +190,17 @@ class GeneralGenerator : public BaseGenerator {
       }
     }
 
-    if (lang_.language == IDLOptions::kJava) {
+    // Generate JNI template for the first RPC Service
+    if (lang_.language == IDLOptions::kJava
+            && !parser_.services_.vec.empty()) {
         std::string nativecode;
-        for (auto it = parser_.services_.vec.begin();
-             it != parser_.services_.vec.end(); ++it) {
-            ServiceDef &service_def = **it;
-            GenJavaNative(service_def, nativecode);
-            if (parser_.opts.one_file) {
-                one_file_code += nativecode;
-            } else {
-                if (!SaveType(service_def.name, *service_def.defined_namespace,
-                              nativecode, true)) return false;
-            }
+        ServiceDef &service_def = **parser_.services_.vec.begin();
+        GenJNITemplate(service_def, nativecode);
+        if (parser_.opts.one_file) {
+            one_file_code += nativecode;
+        } else {
+            if (!SaveType(service_def.name, *service_def.defined_namespace,
+                          nativecode, true)) return false;
         }
     }
 
@@ -1390,7 +1390,7 @@ void GenStruct(StructDef &struct_def, std::string *code_ptr) {
   code += "\n\n";
 }
 
-    void GenJavaNative(ServiceDef &service_def, std::string &code) {
+    void GenJNITemplate(ServiceDef &service_def, std::string &code) {
         GenComment(service_def.doc_comment, &code, &lang_.comment_config);
         // Generate a java final class by RPC service name
         code += "public final class " + service_def.name + " {\n";
@@ -1407,10 +1407,12 @@ void GenStruct(StructDef &struct_def, std::string *code_ptr) {
                  it_struct != parser_.structs_.vec.end(); ++it_struct) {
                 StructDef &struct_def = **it_struct;
                 if (struct_def.name != call.request->name) continue;
+                code += "  @Nullable\n";
                 code += "  public static " + call.response->name + " " + call.name + "(";
                 for (auto it_field = struct_def.fields.vec.begin();
                      it_field != struct_def.fields.vec.end(); ++it_field) {
                     FieldDef &field = **it_field;
+                    if (field.deprecated) continue;
                     if (code[code.length() - 1] != '(')
                         code += ", ";
                     code += field.value.type.base_type == BASE_TYPE_STRING ?
@@ -1420,21 +1422,25 @@ void GenStruct(StructDef &struct_def, std::string *code_ptr) {
                 }
 
                 code += ") {\n";
-                code += "    FlatBufferBuilder builder = new FlatBufferBuilder(0);\n";
+                code += "    FlatBufferBuilder builder = new FlatBufferBuilder();\n";
                 code += "    builder.finish(" + call.request->name + ".create"
                         + call.request->name + "(builder";
                 for (auto it_field = struct_def.fields.vec.begin();
                      it_field != struct_def.fields.vec.end(); ++it_field) {
                     FieldDef &field = **it_field;
+                    if (field.deprecated) continue;
                     code += ", ";
                     code += field.value.type.base_type == BASE_TYPE_STRING ?
-                                "builder.createString(" + field.name + ")" : field.name;
+                                (field.name + " == null? 0 : builder.createString("
+                                + field.name + ")") : field.name;
                 }
                 code += "));\n";
-                code += "    byte[] reply = _" + call.name + "(builder.dataBuffer().array());\n";
+                code += "    byte[] reply = _" + call.name + "(builder.sizedByteArray());\n";
+                code += "    if (reply == null) return null;\n";
                 code += "    return " + call.response->name + ".getRootAs"
                         + call.response->name + "(ByteBuffer.wrap(reply));\n";
                 code += "  }\n\n";
+                break;
             }
         }
 

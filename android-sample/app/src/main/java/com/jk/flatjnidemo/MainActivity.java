@@ -5,8 +5,9 @@ import android.support.v7.app.AppCompatActivity;
 import android.view.View;
 import android.widget.TextView;
 
-import com.jk.greeter.Greeter;
-import com.jk.greeter.HelloReply;
+import com.github.jekinchen.flatjni.Greeter;
+import com.github.jekinchen.flatjni.HelloReply;
+import com.github.jekinchen.flatjni.SumResult;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -20,8 +21,11 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onClick(View v) {
                 tv.setText("...");
-                HelloReply replay = Greeter.sayHello("hello, jk");
-                tv.setText(replay.name() + " distance=" + replay.distance());
+                HelloReply replay = Greeter.hello("jk");
+                SumResult result = Greeter.sum(1, 2);
+                String text = replay != null ? replay.greeting() : "hello replay null";
+                text += result != null ? ("sum(1,2)=" + result.result()) : ", sum reply null";
+                tv.setText(text);
             }
         });
     }

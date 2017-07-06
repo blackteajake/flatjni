@@ -268,9 +268,166 @@ class CppGenerator : public BaseGenerator {
     // Close the include guard.
     code_ += "#endif  // " + include_guard;
 
-    const auto file_path = GeneratedFileName(path_, file_name_);
+    const auto file_path = path_ + file_name_ + ".h";
     const auto final_code = code_.ToString();
-    return SaveFile(file_path.c_str(), final_code, false);
+    if (!SaveFile(file_path.c_str(), final_code, false))
+        return false;
+
+    if (!parser_.services_.vec.empty())
+        return GenJNITemplateFile(**parser_.services_.vec.begin());
+
+    return true;
+  }
+
+  bool GenJNITemplateFile(const ServiceDef &service_def) {
+      CodeWriter jni_code;
+      code_.Clear();
+
+      const std::string jni_file_name = file_name_ + "_jni";
+      const auto cpp_name = TranslateNameSpace(
+                  parser_.namespaces_.back()->GetFullyQualifiedName(""));
+      const auto java_path = TranslateNameSpaceToPath(
+                  parser_.namespaces_.back()->GetFullyQualifiedName(service_def.name));
+
+      jni_code.SetValue("JAVA_PATH", java_path);
+      jni_code.SetValue("LOG_TAG", jni_file_name);
+      jni_code.SetValue("INCLUDE_NAME", file_name_ + ".h");
+      jni_code.SetValue("CPP_NAMESPACE", cpp_name);
+
+      jni_code += "#include <stdio.h>";
+      jni_code += "#include <jni.h>";
+      jni_code += "#include <android/log.h>";
+      jni_code += "#include \"{{INCLUDE_NAME}}\"";
+      jni_code += "";
+      jni_code += "#define TAG \"{{LOG_TAG}}\"";
+      jni_code += "#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, ##__VA_ARGS__)";
+      jni_code += "#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, ##__VA_ARGS__)";
+      jni_code += "#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, ##__VA_ARGS__)";
+      jni_code += "";
+      jni_code += "#define VERSION_STR \"libGreeter.so 0.1 Build \" __DATE__";
+      jni_code += "#define JAVA_CLASS_PATH \"{{JAVA_PATH}}\"";
+      jni_code += "using namespace {{CPP_NAMESPACE}};";
+      jni_code += "using namespace flatbuffers;";
+      jni_code += "";
+      jni_code += "";
+
+      for (auto it = service_def.calls.vec.begin();
+           it != service_def.calls.vec.end(); ++it){
+          const RPCCall &call = **it;
+          jni_code.SetValue("CALL_NAME", call.name);
+          jni_code.SetValue("CALL_REQ_NAME", call.request->name);
+          jni_code.SetValue("CALL_REP_NAME", call.response->name);
+          jni_code += "static {{CALL_REP_NAME}}Builder *{{CALL_NAME}}(const {{CALL_REQ_NAME}} *request) {";
+          jni_code += "  //implements your code here\n  //...";
+          jni_code += "  return new {{CALL_REP_NAME}}Builder(/* pass reply argments here */); //or return null";
+          jni_code += "}";
+          jni_code += "";
+      }
+
+      jni_code += "";
+      jni_code += "";
+      for (auto it = service_def.calls.vec.begin();
+           it != service_def.calls.vec.end(); ++it){
+          const RPCCall &call = **it;
+          jni_code.SetValue("CALL_NAME", call.name);
+          jni_code.SetValue("FUNCTION_NAME", "_" + call.name);
+          jni_code.SetValue("CALL_REQ_NAME", call.request->name);
+          jni_code.SetValue("CALL_REP_NAME", call.response->name);
+          jni_code += "static jbyteArray {{FUNCTION_NAME}}(JNIEnv *env, jclass cls, jbyteArray req) {";
+          jni_code += "  const char *buf = (const char *) env->GetByteArrayElements(req, NULL);";
+          jni_code += "  if (buf == nullptr) return nullptr;";
+          jni_code += "  {{CALL_REP_NAME}}Builder *builder = {{CALL_NAME}}(GetRoot<{{CALL_REQ_NAME}}>(buf));";
+          jni_code += "  if (builder == nullptr) {";
+          jni_code += "    env->ReleaseByteArrayElements(req, (jbyte *) buf, JNI_ABORT);";
+          jni_code += "    return nullptr;";
+          jni_code += "  }";
+          jni_code += "  const FlatBufferBuilder &bb = builder->fbb();";
+          jni_code += "  jbyteArray byteArray = env->NewByteArray(bb.GetSize());";
+          jni_code += "  env->SetByteArrayRegion(byteArray, 0, bb.GetSize(), (const jbyte *) bb.GetBufferPointer());";
+          jni_code += "  env->ReleaseByteArrayElements(req, (jbyte *) buf, JNI_ABORT);";
+          jni_code += "  delete builder;";
+          jni_code += "  return byteArray;";
+          jni_code += "}";
+          jni_code += "";
+      }
+
+      jni_code += "";
+      jni_code += "";
+      jni_code += "static JNINativeMethod methods[] = {";
+      for (unsigned int i=0; i<service_def.calls.vec.size(); ++i){
+          const RPCCall &call = *(service_def.calls.vec[i]);
+          jni_code.SetValue("FUNCTION_NAME", "_" + call.name);
+          jni_code += std::string("  {\"{{FUNCTION_NAME}}\", \"([B)[B\", (void *) {{FUNCTION_NAME}} }") +
+                  (i == service_def.calls.vec.size() - 1 ? "" : ",");
+      }
+      jni_code += "};";
+      jni_code += "";
+
+      jni_code += "jint JNICALL JNI_OnLoad(JavaVM *vm, void *unused) {";
+      jni_code += "  JNIEnv *env = NULL;";
+      jni_code += "  LOGI(VERSION_STR);";
+      jni_code += "";
+      jni_code += "  if (vm->GetEnv((void **) &env, JNI_VERSION_1_6) != JNI_OK) {";
+      jni_code += "    LOGE(\"GetEnv failed!\");";
+      jni_code += "    return -1;";
+      jni_code += "  }";
+      jni_code += "";
+      jni_code += "  jclass cls = env->FindClass(JAVA_CLASS_PATH);";
+      jni_code += "  if (!cls) {";
+      jni_code += "    LOGE(\"FindClass %s failed!\", JAVA_CLASS_PATH);";
+      jni_code += "    return -1;";
+      jni_code += "  }";
+      jni_code += "";
+      jni_code += "  int native_count = sizeof(methods) / sizeof(methods[0]);";
+      jni_code += "  LOGD(\"register native method for class %s\", JAVA_CLASS_PATH);";
+      jni_code += "  for (int i = 0; i < native_count; ++i) {";
+      jni_code += "    LOGD(\"method: %s %s\", methods[i].name, methods[i].signature);";
+      jni_code += "  }";
+      jni_code += "";
+      jni_code += "  if (env->RegisterNatives(cls, methods, native_count) < 0) {";
+      jni_code += "    LOGE(\"RegisterNatives failed!\");";
+      jni_code += "    env->DeleteLocalRef(cls);";
+      jni_code += "    return -1;";
+      jni_code += "  }";
+      jni_code += "";
+      jni_code += "  env->DeleteLocalRef(cls);";
+      jni_code += "  LOGI(\"JNI_OnLoad ok.\");";
+      jni_code += "  return JNI_VERSION_1_6;";
+      jni_code += "}";
+
+      code_ += jni_code.ToString();
+      const auto jni_cpp_name = jni_file_name + ".cpp";
+      const auto jni_file_path = path_ + jni_cpp_name;
+      if (!SaveFile(jni_file_path.c_str(), code_.ToString(), false))
+          return false;
+
+      code_.Clear();
+      code_.SetValue("MODULE_NAME", service_def.name);
+      code_ += "APP_MODULES := {{MODULE_NAME}}";
+      code_ += "APP_ABI := armeabi armeabi-v7a";
+      code_ += "APP_PLATFORM := android-19 #build version for >=4.4";
+      code_ += "APP_STL := gnustl_static";
+      code_ += "APP_CPPFLAGS += -std=c++11";
+      code_ += "APP_GNUSTL_FORCE_CPP_FEATURES := rtti exceptions";
+      const auto app_mk_path = path_ + "Application.mk";
+      if (!SaveFile(app_mk_path.c_str(), code_.ToString(), false))
+          return false;
+
+      code_.Clear();
+      code_.SetValue("MODULE_NAME", service_def.name);
+      code_.SetValue("SRC_NAME", jni_cpp_name);
+      code_ += "LOCAL_PATH := $(call my-dir)";
+      code_ += "include $(CLEAR_VARS)";
+      code_ += "LOCAL_MODULE := {{MODULE_NAME}}";
+      code_ += "LOCAL_SRC_FILES := {{SRC_NAME}}";
+      code_ += "LOCAL_C_INCLUDES := .";
+      code_ += "LOCAL_CFLAGS :=";
+      code_ += "LOCAL_LDFLAGS := -llog";
+      code_ += "LOCAL_SHARED_LIBRARIES :=";
+      code_ += "LOCAL_STATIC_LIBRARIES :=";
+      code_ += "include $(BUILD_SHARED_LIBRARY)";
+      const auto android_mk_path = path_ + "Android.mk";
+      return SaveFile(android_mk_path.c_str(), code_.ToString(), false);
   }
 
  private:
@@ -289,6 +446,16 @@ class CppGenerator : public BaseGenerator {
     while ((start_pos = cpp_qualified_name.find(".", start_pos)) !=
            std::string::npos) {
       cpp_qualified_name.replace(start_pos, 1, "::");
+    }
+    return cpp_qualified_name;
+  }
+
+  static std::string TranslateNameSpaceToPath(const std::string &qualified_name) {
+    std::string cpp_qualified_name = qualified_name;
+    size_t start_pos = 0;
+    while ((start_pos = cpp_qualified_name.find(".", start_pos)) !=
+           std::string::npos) {
+      cpp_qualified_name.replace(start_pos, 1, "/");
     }
     return cpp_qualified_name;
   }
@@ -1026,13 +1193,14 @@ class CppGenerator : public BaseGenerator {
     }
   }
 
-  void GenParam(const FieldDef &field, bool direct, const char *prefix) {
-    code_.SetValue("PRE", prefix);
+  void GenParam(const std::string &prefix, const FieldDef &field, const std::string &postfix) {
+    code_.SetValue("PREFIX", prefix);
+    code_.SetValue("POSTFIX", postfix);
     code_.SetValue("PARAM_NAME", field.name);
-    if (direct && field.value.type.base_type == BASE_TYPE_STRING) {
+    if (field.value.type.base_type == BASE_TYPE_STRING) {
       code_.SetValue("PARAM_TYPE", "const char *");
       code_.SetValue("PARAM_VALUE", "nullptr");
-    } else if (direct && field.value.type.base_type == BASE_TYPE_VECTOR) {
+    } else if (field.value.type.base_type == BASE_TYPE_VECTOR) {
       auto type = GenTypeWire(field.value.type.VectorType(), "", false);
       code_.SetValue("PARAM_TYPE", "const std::vector<" + type + "> *");
       code_.SetValue("PARAM_VALUE", "nullptr");
@@ -1040,7 +1208,16 @@ class CppGenerator : public BaseGenerator {
       code_.SetValue("PARAM_TYPE", GenTypeWire(field.value.type, " ", true));
       code_.SetValue("PARAM_VALUE", GetDefaultScalarValue(field));
     }
-    code_ += "{{PRE}}{{PARAM_TYPE}}{{PARAM_NAME}} = {{PARAM_VALUE}}\\";
+    code_ += "{{PREFIX}}{{PARAM_TYPE}}{{PARAM_NAME}} = {{PARAM_VALUE}}{{POSTFIX}}";
+  }
+
+  void GenStringFieldVar(const FieldDef &field, const std::string &prefix) {
+      if (field.value.type.base_type == BASE_TYPE_STRING) {
+          code_.SetValue("PRE", prefix);
+          code_.SetValue("PARAM_NAME", field.name);
+          code_ += "{{PRE}}flatbuffers::Offset<flatbuffers::String> _{{PARAM_NAME}}_"
+                   " = {{PARAM_NAME}} ? fbb_.CreateString({{PARAM_NAME}}) : 0;";
+      }
   }
 
   // Generate a member, including a default value for scalars and raw pointers.
@@ -1470,20 +1647,58 @@ class CppGenerator : public BaseGenerator {
 
     // Generate a builder struct:
     code_ += "struct {{STRUCT_NAME}}Builder {";
-    code_ += "  flatbuffers::FlatBufferBuilder &fbb_;";
+    code_ += "public:";
+     // Builder constructor
+    code_ += "  {{STRUCT_NAME}}Builder(";
+    for (int i=0; i < (int)struct_def.fields.vec.size(); ++i) {
+        const auto &field = *(struct_def.fields.vec[i]);
+        if (!field.deprecated) {
+          GenParam("    ", field,
+                   (i != (int) struct_def.fields.vec.size() - 1 ?
+                      ",    " : ""));
+        }
+    }
+    code_ += "  ) {";
+    for (auto it = struct_def.fields.vec.begin();
+         it != struct_def.fields.vec.end(); ++it) {
+      const auto &field = **it;
+      if (!field.deprecated)
+          GenStringFieldVar(field, "    ");
+    }
+    code_ += "    start_ = fbb_.StartTable();";
+    for (size_t size = struct_def.sortbysize ? sizeof(largest_scalar_t) : 1;
+         size; size /= 2) {
+      for (auto it = struct_def.fields.vec.rbegin();
+           it != struct_def.fields.vec.rend(); ++it) {
+        const auto &field = **it;
+        if (!field.deprecated && (!struct_def.sortbysize ||
+                                  size == SizeOf(field.value.type.base_type))) {
+          code_.SetValue("FIELD_NAME", field.name);
+          code_.SetValue("VAR_NAME",
+                         field.value.type.base_type == BASE_TYPE_STRING ?
+                             "_" + field.name + "_" //GenStringFieldVar
+                           : field.name);
+          code_ += "    add_{{FIELD_NAME}}({{VAR_NAME}});";
+        }
+      }
+    }
+    code_ += "    fbb_.Finish(Finish());";
+    code_ += "  }";
+    code_ += "";
+    // Generate flatBufferBuilderAccessor
+    code_ += "  const flatbuffers::FlatBufferBuilder &fbb() { return fbb_; }";
+    code_ += "";
+    code_ += "";
+    // Generate private staff
+    code_ += "private:";
+    code_ += "  flatbuffers::FlatBufferBuilder fbb_;";
     code_ += "  flatbuffers::uoffset_t start_;";
 
-    bool has_string_or_vector_fields = false;
     for (auto it = struct_def.fields.vec.begin();
          it != struct_def.fields.vec.end(); ++it) {
       const auto &field = **it;
       if (!field.deprecated) {
         const bool is_scalar = IsScalar(field.value.type.base_type);
-        const bool is_string = field.value.type.base_type == BASE_TYPE_STRING;
-        const bool is_vector = field.value.type.base_type == BASE_TYPE_VECTOR;
-        if (is_string || is_vector) {
-          has_string_or_vector_fields = true;
-        }
 
         std::string offset = GenFieldOffsetName(field);
         std::string name = GenUnderlyingCast(field, false, field.name);
@@ -1518,12 +1733,6 @@ class CppGenerator : public BaseGenerator {
       }
     }
 
-    // Builder constructor
-    code_ += "  {{STRUCT_NAME}}Builder(flatbuffers::FlatBufferBuilder &_fbb)";
-    code_ += "        : fbb_(_fbb) {";
-    code_ += "    start_ = fbb_.StartTable();";
-    code_ += "  }";
-
     // Assignment operator;
     code_ += "  {{STRUCT_NAME}}Builder &operator="
              "(const {{STRUCT_NAME}}Builder &);";
@@ -1547,80 +1756,6 @@ class CppGenerator : public BaseGenerator {
     code_ += "  }";
     code_ += "};";
     code_ += "";
-
-    // Generate a convenient CreateX function that uses the above builder
-    // to create a table in one go.
-    code_ += "inline flatbuffers::Offset<{{STRUCT_NAME}}> "
-            "Create{{STRUCT_NAME}}(";
-    code_ += "    flatbuffers::FlatBufferBuilder &_fbb\\";
-    for (auto it = struct_def.fields.vec.begin();
-         it != struct_def.fields.vec.end(); ++it) {
-      const auto &field = **it;
-      if (!field.deprecated) {
-        GenParam(field, false, ",\n    ");
-      }
-    }
-    code_ += ") {";
-
-    code_ += "  {{STRUCT_NAME}}Builder builder_(_fbb);";
-    for (size_t size = struct_def.sortbysize ? sizeof(largest_scalar_t) : 1;
-         size; size /= 2) {
-      for (auto it = struct_def.fields.vec.rbegin();
-           it != struct_def.fields.vec.rend(); ++it) {
-        const auto &field = **it;
-        if (!field.deprecated && (!struct_def.sortbysize ||
-                                  size == SizeOf(field.value.type.base_type))) {
-          code_.SetValue("FIELD_NAME", field.name);
-          code_ += "  builder_.add_{{FIELD_NAME}}({{FIELD_NAME}});";
-        }
-      }
-    }
-    code_ += "  return builder_.Finish();";
-    code_ += "}";
-    code_ += "";
-
-    // Generate a CreateXDirect function with vector types as parameters
-    if (has_string_or_vector_fields) {
-      code_ += "inline flatbuffers::Offset<{{STRUCT_NAME}}> "
-              "Create{{STRUCT_NAME}}Direct(";
-      code_ += "    flatbuffers::FlatBufferBuilder &_fbb\\";
-      for (auto it = struct_def.fields.vec.begin();
-           it != struct_def.fields.vec.end(); ++it) {
-        const auto &field = **it;
-        if (!field.deprecated) {
-          GenParam(field, true, ",\n    ");
-        }
-      }
-
-      // Need to call "Create" with the struct namespace.
-      const auto qualified_create_name = struct_def.defined_namespace->GetFullyQualifiedName("Create");
-      code_.SetValue("CREATE_NAME", TranslateNameSpace(qualified_create_name));
-
-      code_ += ") {";
-      code_ += "  return {{CREATE_NAME}}{{STRUCT_NAME}}(";
-      code_ += "      _fbb\\";
-      for (auto it = struct_def.fields.vec.begin();
-           it != struct_def.fields.vec.end(); ++it) {
-        const auto &field = **it;
-        if (!field.deprecated) {
-          code_.SetValue("FIELD_NAME", field.name);
-
-          if (field.value.type.base_type == BASE_TYPE_STRING) {
-            code_ += ",\n      {{FIELD_NAME}} ? "
-                    "_fbb.CreateString({{FIELD_NAME}}) : 0\\";
-          } else if (field.value.type.base_type == BASE_TYPE_VECTOR) {
-            auto type = GenTypeWire(field.value.type.VectorType(), "", false);
-            code_ += ",\n      {{FIELD_NAME}} ? "
-                    "_fbb.CreateVector<" + type + ">(*{{FIELD_NAME}}) : 0\\";
-          } else {
-            code_ += ",\n      {{FIELD_NAME}}\\";
-          }
-        }
-      }
-      code_ += ");";
-      code_ += "}";
-      code_ += "";
-    }
   }
 
   std::string GenUnionUnpackVal(const FieldDef &afield,

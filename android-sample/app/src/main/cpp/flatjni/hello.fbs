@@ -1,0 +1,23 @@
+namespace com.github.jekinchen.flatjni;
+
+table HelloRequest {
+  name:string;
+}
+
+table HelloReply {
+  greeting:string;
+}
+
+table SumParam {
+  i:int;
+  j:int;
+}
+
+table SumResult {
+  result:int;
+}
+
+rpc_service Greeter {
+  hello(HelloRequest):HelloReply;
+  sum(SumParam):SumResult;
+}
