@@ -3,7 +3,8 @@ FlatJNI
 
 **FlatJNI** frees you from the troublesome JNI programming, which automatically generates NDK templates based on flatbuffers' schame files for easy integration into Android projects. Just like using flatbuffers, call C ++ functions in Java, so you do not need to take the time to study the JNI specification,and not to write error-prone JNI-related code.
 
-# Getting Started#
+Getting Started
+=================
 
 1. Clone **FlatJNI** :
 
@@ -24,7 +25,7 @@ FlatJNI
 
 3. Write a schema file, for example:
 
-   ```json
+   ```shell
    namespace com.github.jekinchen.flatjni;
 
    table HelloRequest {
@@ -54,7 +55,7 @@ FlatJNI
 
    Note: `FlatJNI` supports scalar and string filed types: 
 
-   ```
+   ```shell
    8 bit: byte, ubyte, bool
    16 bit: short, ushort
    32 bit: int, uint, float
