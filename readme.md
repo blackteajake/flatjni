@@ -170,4 +170,14 @@ Getting Started
 
    As you can see above, you just only care about the interface definition (a schema file like RPC definition), and use some helper class to make a C++ native call from Java!
 
-   In later version, I'll to make the distribution more easier!
+
+
+
+Android Test
+=================
+
+There is an Android example, use Android Studio to open `flatjni/android-sample`. 
+
+The schema file is `android-sample/app/src/main/cpp/flatjni/hello.fbs`, you can change it, then execute flatc to re-generate all files, replace the relative files in Android project with new ones, and see what happens. 
+
+The example tested with Android Studio v2.3.3, which support build NDK/JNI (achived by adding `externalNativeBuild` to `android-sample/app/build.gradle`), and set breakpoint in C++ file.
