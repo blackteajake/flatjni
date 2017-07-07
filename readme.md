@@ -18,10 +18,10 @@ Getting Started
    ```shell
    cd flatjni
    mkdir build
-   cd build && cmake ..
+   cd build && cmake -DCMAKE_INSTALL_PREFIX=target .. && make install
    ```
 
-   If everything goes well, an executive file named `flatc` generated in `build` directory.
+   If everything goes well, an executable file `flatc` generated in `build/target/bin` directory.
 
 3. Write a schema file, for example:
 
@@ -55,7 +55,7 @@ Getting Started
 
    Note: `FlatJNI` supports scalar and string filed types: 
 
-   ```shell
+   ```
    8 bit: byte, ubyte, bool
    16 bit: short, ushort
    32 bit: int, uint, float
@@ -66,29 +66,37 @@ Getting Started
 4. Generate JNI Code template:
 
    ```shell
-   ./flatc --java --cpp -o jni hello.fbs
+   cd target
+   bin/flatc --java --cpp -o jni /path/to/hello.fbs
+   cp -a java/com jni/
    ```
 
-   Then a `jni` directory will create, and it's contents as follows:
+   `flatc` create `jni` directory, now the contents of `jni` as follows:
 
    ```shell
-   jni/
+   jni
    ├── Android.mk
    ├── Application.mk
    ├── com
-   │   └── github
-   │       └── jekinchen
-   │           └── flatjni
-   │               ├── Greeter.java
-   │               ├── HelloReply.java
-   │               ├── HelloRequest.java
-   │               ├── SumParam.java
-   │               └── SumResult.java
+   │   ├── github
+   │   │   └── jekinchen
+   │   │       └── flatjni
+   │   │           ├── Greeter.java
+   │   │           ├── HelloReply.java
+   │   │           ├── HelloRequest.java
+   │   │           ├── SumParam.java
+   │   │           └── SumResult.java
+   │   └── google
+   │       └── flatbuffers
+   │           ├── Constants.java
+   │           ├── FlatBufferBuilder.java
+   │           ├── Struct.java
+   │           └── Table.java
    ├── hello.h
    └── hello_jni.cpp
    ```
 
-   The `hello_jni.cpp` let you implements all RPC calls naturally:
+   Open and edit `hello_jni.cpp`, which let you implement all RPC calls naturally:
 
    ```c++
    //...
@@ -112,12 +120,9 @@ Getting Started
    //...
    ```
 
-   ​
-
 5. Build `.so` file which can be used in Android project: 
 
    ```shell
-   cp ../include/flatbuffers jni/
    cd jni && ndk-build  //ndk-build is sheeped by Android NDK
    ```
 
@@ -132,9 +137,9 @@ Getting Started
    [armeabi-v7a] Install        : libGreeter.so => libs/armeabi-v7a/libGreeter.so
    ```
 
-   We copy `libs/armeabi/libGreeter.so` and `libs/armeabi-v7a/libGreeter.so` to the library directory of Android project, for example: `AndroidProjectRoot/app/src/main/jniLibs`.
+   Copy `libs/armeabi/libGreeter.so` and `libs/armeabi-v7a/libGreeter.so` to the library directory of Android project, for example: `AndroidProjectRoot/app/src/main/jniLibs`.
 
-6. Copy the contents in `jni/com` to Android project, and make native calls in Java, lets says in `MainActivity.java`:
+6. Move `jni/com` to Android project, now let's make native calls in Java, say in `MainActivity.java`:
 
    ```java
    public class MainActivity extends AppCompatActivity {
@@ -158,6 +163,6 @@ Getting Started
    }
    ```
 
-   The contents in `flatjni/java/com` are need to copy to Android project too. 
+   As you can see above, you just only care about the interface definition (a schema file like RPC definition), and use some helper class to make a C++ native call from Java!
 
    In later version, I'll to make the distribution more easier!
