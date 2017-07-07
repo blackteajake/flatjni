@@ -68,7 +68,7 @@ Getting Started
    ```shell
    cd target
    bin/flatc --java --cpp -o jni /path/to/hello.fbs
-   cp -a java/com jni/
+   cp -a include/flatbuffers java/com jni/
    ```
 
    `flatc` create `jni` directory, now the contents of `jni` as follows:
@@ -92,6 +92,9 @@ Getting Started
    │           ├── FlatBufferBuilder.java
    │           ├── Struct.java
    │           └── Table.java
+   ├── flatbuffers
+   │   ├── base.h
+   │   └── flatbuffers.h
    ├── hello.h
    └── hello_jni.cpp
    ```
@@ -123,8 +126,10 @@ Getting Started
 5. Build `.so` file which can be used in Android project: 
 
    ```shell
-   cd jni && ndk-build  //ndk-build is sheeped by Android NDK
+   cd jni && ndk-build
    ```
+
+   `ndk-build` is shipped by Android NDK. Note `ndk-build` require current executing directory called `jni`.
 
    Here is the outputs:
 

@@ -236,7 +236,7 @@ endif()
 
 if(FLATBUFFERS_INSTALL)
 #  install(DIRECTORY include/flatbuffers DESTINATION include)
-  install(FILES include/flatbuffers/flatbuffers.h include/flatbuffers/base.h DESTINATION include)
+  install(FILES include/flatbuffers/flatbuffers.h include/flatbuffers/base.h DESTINATION include/flatbuffers)
   install(DIRECTORY java/com DESTINATION java)
 #  if(FLATBUFFERS_BUILD_FLATLIB)
 #    install(TARGETS flatbuffers DESTINATION lib)
