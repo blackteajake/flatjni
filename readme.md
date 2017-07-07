@@ -181,3 +181,69 @@ There is an Android example, use Android Studio to open `flatjni/android-sample`
 The schema file is `android-sample/app/src/main/cpp/flatjni/hello.fbs`, you can change it, then execute flatc to re-generate all files, replace the relative files in Android project with new ones, and see what happens. 
 
 The example tested with Android Studio v2.3.3, which support build NDK/JNI (achived by adding `externalNativeBuild` to `android-sample/app/build.gradle`), and set breakpoint in C++ file.
+
+Why to bypass JNI?
+=================
+
+Because writing JNI-relatvie code is a trivial job, it's so error-prone! I spent a lot of time to debug JNI, and usually the bug is just some literal errors or use the wrong function, which not easily figure out at the coding or compile time. I'll show some examples:
+
+- FindClass
+
+  ```c++
+  env->FindClass("com.github.jekinchen.flatjni.Greeter");
+  ```
+  Failed to find the class because of the name space separator, here's the right style:
+  ```c++
+  env->FindClass("com/github/jekinchen/flatjni/Greeter");
+  ```
+
+- Type Signatures
+
+  ```c++
+  //Java Native method
+  long f (int n, String s, int[] arr);
+  //You need this signature to register in C++
+  (ILjava/lang/String;[I)J
+  ```
+
+  You'd better to spend dozens of times to check signature. One may say there is a tool `javap` which can prints the signatures of all methods for you, but if someone make a little change to method later ? The error occur at run time and it's expensive to figure out then at compile time.
+
+- A wide variety of functions
+
+  ```c++
+  //call java method which return type is void
+  CallVoidMethod()
+  CallVoidMethodA()
+  CallVoidMethodV()
+  //return type is Object
+  CallObjectMethod()
+  CallObjectMethodA()
+  CallObjectMethodV()
+  //return type is Boolean
+  CallBooleanMethod()
+  CallBooleanMethodA()
+  CallBooleanMethodV()
+  ...
+  //call java static method
+  CallStaticVoidMethod()
+  CallStaticObjectMethod()
+  ...
+  ```
+
+- Local reference
+
+  C++ has no GC, when you create a local reference ( to jobject type) , remember to release it before the method return, or you'll leak local reference and finally trigger a fatal error says `Local reference table overflow`. The local reference table allow maximum 512 entries.
+
+- Thread context
+
+  In C++ thread, you must call `AttachCurrentThread` before calling Java method, and require to call `DetachCurrentThread` before thread exiting.
+
+In short, in order to avoid dealing with the above complex rules, one way is to use few JNI functions as possible. Let developers focus on theirs business. I achieved this by using `google's flatbuffer`, a `flatbuffer` is a byte array that represent a business data structure, all Java native method can take a `flatbuffer` as argument and return value. Developers just use some helper classes to create or access `flatbuffer` easily. That's the `flatJNI` do.
+
+
+Todo
+=================
+Call Java native method in C++.
+
+Any suggestions are Welcome!
+=================
