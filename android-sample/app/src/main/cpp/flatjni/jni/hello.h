@@ -19,6 +19,8 @@ struct SumParam;
 
 struct SumResult;
 
+struct User;
+
 struct HelloRequest FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   enum {
     VT_NAME = 4
@@ -39,7 +41,7 @@ public:
   HelloRequestBuilder(
     const char *name = nullptr
   ) {
-    flatbuffers::Offset<flatbuffers::String> _name_ = name ? fbb_.CreateString(name) : 0;
+    flatbuffers::Offset<flatbuffers::String> _name_ = name? fbb_.CreateString(name) : 0;
     start_ = fbb_.StartTable();
     add_name(_name_);
     fbb_.Finish(Finish());
@@ -82,7 +84,7 @@ public:
   HelloReplyBuilder(
     const char *greeting = nullptr
   ) {
-    flatbuffers::Offset<flatbuffers::String> _greeting_ = greeting ? fbb_.CreateString(greeting) : 0;
+    flatbuffers::Offset<flatbuffers::String> _greeting_ = greeting? fbb_.CreateString(greeting) : 0;
     start_ = fbb_.StartTable();
     add_greeting(_greeting_);
     fbb_.Finish(Finish());
@@ -193,6 +195,101 @@ private:
   flatbuffers::Offset<SumResult> Finish() {
     const auto end = fbb_.EndTable(start_, 1);
     auto o = flatbuffers::Offset<SumResult>(end);
+    return o;
+  }
+};
+
+struct User FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  enum {
+    VT_ID = 4,
+    VT_NAME = 6,
+    VT_AGE = 8,
+    VT_ISBOY = 10,
+    VT_VOICEDATA = 12,
+    VT_TIMESTAMP = 14
+  };
+  uint32_t id() const {
+    return GetField<uint32_t>(VT_ID, 0);
+  }
+  const flatbuffers::String *name() const {
+    return GetPointer<const flatbuffers::String *>(VT_NAME);
+  }
+  uint8_t age() const {
+    return GetField<uint8_t>(VT_AGE, 0);
+  }
+  bool isBoy() const {
+    return GetField<uint8_t>(VT_ISBOY, 0) != 0;
+  }
+  const flatbuffers::Vector<int8_t> *voiceData() const {
+    return GetPointer<const flatbuffers::Vector<int8_t> *>(VT_VOICEDATA);
+  }
+  int64_t timestamp() const {
+    return GetField<int64_t>(VT_TIMESTAMP, 0);
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<uint32_t>(verifier, VT_ID) &&
+           VerifyOffset(verifier, VT_NAME) &&
+           verifier.Verify(name()) &&
+           VerifyField<uint8_t>(verifier, VT_AGE) &&
+           VerifyField<uint8_t>(verifier, VT_ISBOY) &&
+           VerifyOffset(verifier, VT_VOICEDATA) &&
+           verifier.Verify(voiceData()) &&
+           VerifyField<int64_t>(verifier, VT_TIMESTAMP) &&
+           verifier.EndTable();
+  }
+};
+
+struct UserBuilder {
+public:
+  UserBuilder(
+    uint32_t id = 0,    
+    const char *name = nullptr,    
+    uint8_t age = 0,    
+    bool isBoy = false,    
+    const std::vector<int8_t> *voiceData = nullptr,    
+    int64_t timestamp = 0
+  ) {
+    flatbuffers::Offset<flatbuffers::String> _name_ = name? fbb_.CreateString(name) : 0;
+    flatbuffers::Offset<flatbuffers::Vector<int8_t>> _voiceData_ = voiceData? fbb_.CreateVector<int8_t>(*voiceData) : 0;
+    start_ = fbb_.StartTable();
+    add_timestamp(timestamp);
+    add_voiceData(_voiceData_);
+    add_name(_name_);
+    add_id(id);
+    add_isBoy(isBoy);
+    add_age(age);
+    fbb_.Finish(Finish());
+  }
+
+  const flatbuffers::FlatBufferBuilder &fbb() { return fbb_; }
+
+
+private:
+  flatbuffers::FlatBufferBuilder fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_id(uint32_t id) {
+    fbb_.AddElement<uint32_t>(User::VT_ID, id, 0);
+  }
+  void add_name(flatbuffers::Offset<flatbuffers::String> name) {
+    fbb_.AddOffset(User::VT_NAME, name);
+  }
+  void add_age(uint8_t age) {
+    fbb_.AddElement<uint8_t>(User::VT_AGE, age, 0);
+  }
+  void add_isBoy(bool isBoy) {
+    fbb_.AddElement<uint8_t>(User::VT_ISBOY, static_cast<uint8_t>(isBoy), 0);
+  }
+  void add_voiceData(flatbuffers::Offset<flatbuffers::Vector<int8_t>> voiceData) {
+    fbb_.AddOffset(User::VT_VOICEDATA, voiceData);
+  }
+  void add_timestamp(int64_t timestamp) {
+    fbb_.AddElement<int64_t>(User::VT_TIMESTAMP, timestamp, 0);
+  }
+  UserBuilder &operator=(const UserBuilder &);
+  flatbuffers::Offset<User> Finish() {
+    const auto end = fbb_.EndTable(start_, 6);
+    auto o = flatbuffers::Offset<User>(end);
     return o;
   }
 };

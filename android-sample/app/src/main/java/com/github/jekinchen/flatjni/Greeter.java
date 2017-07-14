@@ -13,24 +13,49 @@ public final class Greeter {
   static { System.loadLibrary("Greeter"); }
 
   @Nullable
-  public static HelloReply hello(String name) {
+  public static HelloReply hello(@Nullable String name) {
     FlatBufferBuilder builder = new FlatBufferBuilder();
-    builder.finish(HelloRequest.createHelloRequest(builder, name == null? 0 : builder.createString(name)));
+    builder.finish(HelloRequest.createHelloRequest(builder,
+        name == null? 0 : builder.createString(name)));
     byte[] reply = _hello(builder.sizedByteArray());
     if (reply == null) return null;
     return HelloReply.getRootAsHelloReply(ByteBuffer.wrap(reply));
   }
 
   @Nullable
-  public static SumResult sum(int i, int j) {
+  public static SumResult sum(int i,
+        int j) {
     FlatBufferBuilder builder = new FlatBufferBuilder();
-    builder.finish(SumParam.createSumParam(builder, i, j));
+    builder.finish(SumParam.createSumParam(builder,
+        i,
+        j));
     byte[] reply = _sum(builder.sizedByteArray());
     if (reply == null) return null;
     return SumResult.getRootAsSumResult(ByteBuffer.wrap(reply));
   }
 
+  @Nullable
+  public static User echo(long id,
+        @Nullable String name,
+        int age,
+        boolean isBoy,
+        @Nullable byte[] voiceData,
+        long timestamp) {
+    FlatBufferBuilder builder = new FlatBufferBuilder();
+    builder.finish(User.createUser(builder,
+        id,
+        name == null? 0 : builder.createString(name),
+        age,
+        isBoy,
+        voiceData == null? 0 : User.createVoiceDataVector(builder, voiceData),
+        timestamp));
+    byte[] reply = _echo(builder.sizedByteArray());
+    if (reply == null) return null;
+    return User.getRootAsUser(ByteBuffer.wrap(reply));
+  }
+
   private static native byte[] _hello(byte[] req);
   private static native byte[] _sum(byte[] req);
+  private static native byte[] _echo(byte[] req);
 }
 

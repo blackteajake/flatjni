@@ -1414,10 +1414,16 @@ void GenStruct(StructDef &struct_def, std::string *code_ptr) {
                     FieldDef &field = **it_field;
                     if (field.deprecated) continue;
                     if (code[code.length() - 1] != '(')
-                        code += ", ";
-                    code += field.value.type.base_type == BASE_TYPE_STRING ?
-                                "String"
-                              : GenTypeBasic(DestinationType(field.value.type, false));
+                        code += ",\n        ";
+
+                    if (field.value.type.base_type == BASE_TYPE_STRING)
+                        code += "@Nullable String";
+                    else if (field.value.type.base_type == BASE_TYPE_VECTOR
+                             && IsByte(field.value.type.VectorType().base_type))
+                        code += "@Nullable byte[]";
+                    else
+                        code += GenTypeBasic(DestinationType(field.value.type, false));
+
                     code += " " + field.name;
                 }
 
@@ -1429,11 +1435,20 @@ void GenStruct(StructDef &struct_def, std::string *code_ptr) {
                      it_field != struct_def.fields.vec.end(); ++it_field) {
                     FieldDef &field = **it_field;
                     if (field.deprecated) continue;
-                    code += ", ";
-                    code += field.value.type.base_type == BASE_TYPE_STRING ?
-                                (field.name + " == null? 0 : builder.createString("
-                                + field.name + ")") : field.name;
+                    code += ",\n        ";
+
+                    if (field.value.type.base_type == BASE_TYPE_STRING)
+                        code += field.name
+                                + " == null? 0 : builder.createString(" + field.name + ")";
+                    else if (field.value.type.base_type == BASE_TYPE_VECTOR
+                             && IsByte(field.value.type.VectorType().base_type))
+                        code += field.name
+                                + " == null? 0 : " + struct_def.name + ".create"
+                                + MakeCamel(field.name) + "Vector(builder, " + field.name + ")";
+                    else
+                        code += field.name;
                 }
+
                 code += "));\n";
                 code += "    byte[] reply = _" + call.name + "(builder.sizedByteArray());\n";
                 code += "    if (reply == null) return null;\n";

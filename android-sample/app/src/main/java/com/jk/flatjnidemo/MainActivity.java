@@ -8,6 +8,9 @@ import android.widget.TextView;
 import com.github.jekinchen.flatjni.Greeter;
 import com.github.jekinchen.flatjni.HelloReply;
 import com.github.jekinchen.flatjni.SumResult;
+import com.github.jekinchen.flatjni.User;
+
+import java.nio.ByteBuffer;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -20,11 +23,18 @@ public class MainActivity extends AppCompatActivity {
         tv.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
+                byte[] data = new byte[1024];
                 tv.setText("...");
                 HelloReply replay = Greeter.hello("jk");
                 SumResult result = Greeter.sum(1, 2);
-                String text = replay != null ? replay.greeting() : "hello replay null";
-                text += result != null ? ("sum(1,2)=" + result.result()) : ", sum reply null";
+                User user = Greeter.echo(111, "jk", 34, true, data, 1234567);
+                String text = replay != null ? replay.greeting() : "hello=null";
+                text += "\n";
+                text += result != null ? ("sum(1,2)=" + result.result()) : "sum=null";
+                text += "\n";
+                text += user != null ? "id:" + user.id() + "-name:" + user.name() + "-ts:"
+                        + user.timestamp() + "-data check:"
+                        + (ByteBuffer.wrap(data).equals(user.voiceDataAsByteBuffer())) : "user=null";
                 tv.setText(text);
             }
         });

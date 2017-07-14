@@ -1212,11 +1212,16 @@ class CppGenerator : public BaseGenerator {
   }
 
   void GenStringFieldVar(const FieldDef &field, const std::string &prefix) {
+      code_.SetValue("PRE", prefix);
+      code_.SetValue("PARAM_NAME", field.name);
       if (field.value.type.base_type == BASE_TYPE_STRING) {
-          code_.SetValue("PRE", prefix);
-          code_.SetValue("PARAM_NAME", field.name);
           code_ += "{{PRE}}flatbuffers::Offset<flatbuffers::String> _{{PARAM_NAME}}_"
-                   " = {{PARAM_NAME}} ? fbb_.CreateString({{PARAM_NAME}}) : 0;";
+                   " = {{PARAM_NAME}}? fbb_.CreateString({{PARAM_NAME}}) : 0;";
+      } else if (field.value.type.base_type == BASE_TYPE_VECTOR) {
+          auto type = GenTypeWire(field.value.type.VectorType(), "", false);
+          code_.SetValue("TYPE", type);
+          code_ += "{{PRE}}flatbuffers::Offset<flatbuffers::Vector<{{TYPE}}>> _{{PARAM_NAME}}_"
+                   " = {{PARAM_NAME}}? fbb_.CreateVector<{{TYPE}}>(*{{PARAM_NAME}}) : 0;";
       }
   }
 
@@ -1675,7 +1680,8 @@ class CppGenerator : public BaseGenerator {
                                   size == SizeOf(field.value.type.base_type))) {
           code_.SetValue("FIELD_NAME", field.name);
           code_.SetValue("VAR_NAME",
-                         field.value.type.base_type == BASE_TYPE_STRING ?
+                         (field.value.type.base_type == BASE_TYPE_STRING
+                          || field.value.type.base_type == BASE_TYPE_VECTOR) ?
                              "_" + field.name + "_" //GenStringFieldVar
                            : field.name);
           code_ += "    add_{{FIELD_NAME}}({{VAR_NAME}});";

@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <jni.h>
-#include <string>
 #include <android/log.h>
 #include "hello.h"
 
@@ -18,16 +17,26 @@ using namespace flatbuffers;
 static HelloReplyBuilder *hello(const HelloRequest *request) {
   //implements your code here
   //...
-    std::string greeting("Hello ");
-    greeting.append(request->name() == NULL ? "NULL" : request->name()->c_str());
-  return new HelloReplyBuilder(greeting.c_str()); //or return null
+  return new HelloReplyBuilder(/* pass reply argments here */); //or return null
 }
 
 static SumResultBuilder *sum(const SumParam *request) {
   //implements your code here
   //...
-  //return new SumResultBuilder(request->i() + request->j()); //or return null
-  return NULL;
+  return new SumResultBuilder(/* pass reply argments here */); //or return null
+}
+
+static UserBuilder *echo(const User *request) {
+  //implements your code here
+  //...
+  std::vector<int8_t> data;
+  for (auto it = request->voiceData()->begin();
+          it != request->voiceData()->end(); ++it) {
+    data.push_back(*it);
+  }
+  return new UserBuilder(request->id(),
+                         request->name() == nullptr ? nullptr : request->name()->c_str(),
+  request->age(), request->isBoy(), &data, request->timestamp()); //or return null
 }
 
 
@@ -64,11 +73,28 @@ static jbyteArray _sum(JNIEnv *env, jclass cls, jbyteArray req) {
   return byteArray;
 }
 
+static jbyteArray _echo(JNIEnv *env, jclass cls, jbyteArray req) {
+  const char *buf = (const char *) env->GetByteArrayElements(req, NULL);
+  if (buf == nullptr) return nullptr;
+  UserBuilder *builder = echo(GetRoot<User>(buf));
+  if (builder == nullptr) {
+    env->ReleaseByteArrayElements(req, (jbyte *) buf, JNI_ABORT);
+    return nullptr;
+  }
+  const FlatBufferBuilder &bb = builder->fbb();
+  jbyteArray byteArray = env->NewByteArray(bb.GetSize());
+  env->SetByteArrayRegion(byteArray, 0, bb.GetSize(), (const jbyte *) bb.GetBufferPointer());
+  env->ReleaseByteArrayElements(req, (jbyte *) buf, JNI_ABORT);
+  delete builder;
+  return byteArray;
+}
+
 
 
 static JNINativeMethod methods[] = {
   {"_hello", "([B)[B", (void *) _hello },
-  {"_sum", "([B)[B", (void *) _sum }
+  {"_sum", "([B)[B", (void *) _sum },
+  {"_echo", "([B)[B", (void *) _echo }
 };
 
 jint JNICALL JNI_OnLoad(JavaVM *vm, void *unused) {
