@@ -280,122 +280,133 @@ class CppGenerator : public BaseGenerator {
   }
 
   bool GenJNITemplateFile(const ServiceDef &service_def) {
-      CodeWriter jni_code;
-      code_.Clear();
-
-      const std::string jni_file_name = file_name_ + "_jni";
       const auto cpp_name = TranslateNameSpace(
                   parser_.namespaces_.back()->GetFullyQualifiedName(""));
+
+      code_.Clear();
+      code_.SetValue("INCLUDE_NAME", file_name_ + ".h");
+      code_.SetValue("CPP_NAMESPACE", cpp_name);
+
+      const std::string rpc_file_name = file_name_ + "_rpc";
+      code_ += "#include <jni.h>";
+      code_ += "#include \"{{INCLUDE_NAME}}\"";
+      code_ += "";
+      code_ += "using namespace {{CPP_NAMESPACE}};";
+      code_ += "using namespace flatbuffers;";
+      code_ += "";
+      for (auto it = service_def.calls.vec.begin();
+           it != service_def.calls.vec.end(); ++it){
+          const RPCCall &call = **it;
+          code_.SetValue("CALL_NAME", call.name);
+          code_.SetValue("CALL_REQ_NAME", call.request->name);
+          code_.SetValue("CALL_REP_NAME", call.response->name);
+          code_ += "static {{CALL_REP_NAME}}Builder *{{CALL_NAME}}(const {{CALL_REQ_NAME}} *request) {";
+          code_ += "  //implements your code here\n  //...";
+          code_ += "  return new {{CALL_REP_NAME}}Builder(/* pass reply argments here */); //or return null";
+          code_ += "}";
+          code_ += "";
+      }
+      code_ += "";
+      const auto rpc_file_path = path_ + rpc_file_name + ".h";
+      if (!SaveFile(rpc_file_path.c_str(), code_.ToString(), false))
+          return false;
+
       const auto java_path = TranslateNameSpaceToPath(
                   parser_.namespaces_.back()->GetFullyQualifiedName(service_def.name));
+      const std::string jni_file_name = file_name_ + "_jni";
+      code_.Clear();
+      code_.SetValue("JAVA_PATH", java_path);
+      code_.SetValue("LOG_TAG", jni_file_name);
+      code_.SetValue("INCLUDE_NAME", file_name_ + ".h");
+      code_.SetValue("INCLUDE_RPC", rpc_file_name + ".h");
+      code_.SetValue("CPP_NAMESPACE", cpp_name);
 
-      jni_code.SetValue("JAVA_PATH", java_path);
-      jni_code.SetValue("LOG_TAG", jni_file_name);
-      jni_code.SetValue("INCLUDE_NAME", file_name_ + ".h");
-      jni_code.SetValue("CPP_NAMESPACE", cpp_name);
-
-      jni_code += "#include <stdio.h>";
-      jni_code += "#include <jni.h>";
-      jni_code += "#include <android/log.h>";
-      jni_code += "#include \"{{INCLUDE_NAME}}\"";
-      jni_code += "";
-      jni_code += "#define TAG \"{{LOG_TAG}}\"";
-      jni_code += "#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, ##__VA_ARGS__)";
-      jni_code += "#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, ##__VA_ARGS__)";
-      jni_code += "#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, ##__VA_ARGS__)";
-      jni_code += "";
-      jni_code += "#define VERSION_STR \"libGreeter.so 0.1 Build \" __DATE__";
-      jni_code += "#define JAVA_CLASS_PATH \"{{JAVA_PATH}}\"";
-      jni_code += "using namespace {{CPP_NAMESPACE}};";
-      jni_code += "using namespace flatbuffers;";
-      jni_code += "";
-      jni_code += "";
-
+      code_ += "#include <stdio.h>";
+      code_ += "#include <jni.h>";
+      code_ += "#include <android/log.h>";
+      code_ += "#include \"{{INCLUDE_NAME}}\"";
+      code_ += "#include \"{{INCLUDE_RPC}}\"";
+      code_ += "";
+      code_ += "#define TAG \"{{LOG_TAG}}\"";
+      code_ += "#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, ##__VA_ARGS__)";
+      code_ += "#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, ##__VA_ARGS__)";
+      code_ += "#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, ##__VA_ARGS__)";
+      code_ += "";
+      code_ += "#define VERSION_STR \"libGreeter.so 0.1 Build \" __DATE__";
+      code_ += "#define JAVA_CLASS_PATH \"{{JAVA_PATH}}\"";
+      code_ += "using namespace {{CPP_NAMESPACE}};";
+      code_ += "using namespace flatbuffers;";
+      code_ += "";
+      code_ += "";
       for (auto it = service_def.calls.vec.begin();
            it != service_def.calls.vec.end(); ++it){
           const RPCCall &call = **it;
-          jni_code.SetValue("CALL_NAME", call.name);
-          jni_code.SetValue("CALL_REQ_NAME", call.request->name);
-          jni_code.SetValue("CALL_REP_NAME", call.response->name);
-          jni_code += "static {{CALL_REP_NAME}}Builder *{{CALL_NAME}}(const {{CALL_REQ_NAME}} *request) {";
-          jni_code += "  //implements your code here\n  //...";
-          jni_code += "  return new {{CALL_REP_NAME}}Builder(/* pass reply argments here */); //or return null";
-          jni_code += "}";
-          jni_code += "";
+          code_.SetValue("CALL_NAME", call.name);
+          code_.SetValue("FUNCTION_NAME", "_" + call.name);
+          code_.SetValue("CALL_REQ_NAME", call.request->name);
+          code_.SetValue("CALL_REP_NAME", call.response->name);
+          code_ += "static jbyteArray {{FUNCTION_NAME}}(JNIEnv *env, jclass cls, jbyteArray req) {";
+          code_ += "  const char *buf = (const char *) env->GetByteArrayElements(req, NULL);";
+          code_ += "  if (buf == nullptr) return nullptr;";
+          code_ += "  {{CALL_REP_NAME}}Builder *builder = {{CALL_NAME}}(GetRoot<{{CALL_REQ_NAME}}>(buf));";
+          code_ += "  if (builder == nullptr) {";
+          code_ += "    env->ReleaseByteArrayElements(req, (jbyte *) buf, JNI_ABORT);";
+          code_ += "    return nullptr;";
+          code_ += "  }";
+          code_ += "  const FlatBufferBuilder &bb = builder->fbb();";
+          code_ += "  jbyteArray byteArray = env->NewByteArray(bb.GetSize());";
+          code_ += "  env->SetByteArrayRegion(byteArray, 0, bb.GetSize(), (const jbyte *) bb.GetBufferPointer());";
+          code_ += "  env->ReleaseByteArrayElements(req, (jbyte *) buf, JNI_ABORT);";
+          code_ += "  delete builder;";
+          code_ += "  return byteArray;";
+          code_ += "}";
+          code_ += "";
       }
 
-      jni_code += "";
-      jni_code += "";
-      for (auto it = service_def.calls.vec.begin();
-           it != service_def.calls.vec.end(); ++it){
-          const RPCCall &call = **it;
-          jni_code.SetValue("CALL_NAME", call.name);
-          jni_code.SetValue("FUNCTION_NAME", "_" + call.name);
-          jni_code.SetValue("CALL_REQ_NAME", call.request->name);
-          jni_code.SetValue("CALL_REP_NAME", call.response->name);
-          jni_code += "static jbyteArray {{FUNCTION_NAME}}(JNIEnv *env, jclass cls, jbyteArray req) {";
-          jni_code += "  const char *buf = (const char *) env->GetByteArrayElements(req, NULL);";
-          jni_code += "  if (buf == nullptr) return nullptr;";
-          jni_code += "  {{CALL_REP_NAME}}Builder *builder = {{CALL_NAME}}(GetRoot<{{CALL_REQ_NAME}}>(buf));";
-          jni_code += "  if (builder == nullptr) {";
-          jni_code += "    env->ReleaseByteArrayElements(req, (jbyte *) buf, JNI_ABORT);";
-          jni_code += "    return nullptr;";
-          jni_code += "  }";
-          jni_code += "  const FlatBufferBuilder &bb = builder->fbb();";
-          jni_code += "  jbyteArray byteArray = env->NewByteArray(bb.GetSize());";
-          jni_code += "  env->SetByteArrayRegion(byteArray, 0, bb.GetSize(), (const jbyte *) bb.GetBufferPointer());";
-          jni_code += "  env->ReleaseByteArrayElements(req, (jbyte *) buf, JNI_ABORT);";
-          jni_code += "  delete builder;";
-          jni_code += "  return byteArray;";
-          jni_code += "}";
-          jni_code += "";
-      }
-
-      jni_code += "";
-      jni_code += "";
-      jni_code += "static JNINativeMethod methods[] = {";
+      code_ += "";
+      code_ += "";
+      code_ += "static JNINativeMethod methods[] = {";
       for (unsigned int i=0; i<service_def.calls.vec.size(); ++i){
           const RPCCall &call = *(service_def.calls.vec[i]);
-          jni_code.SetValue("FUNCTION_NAME", "_" + call.name);
-          jni_code += std::string("  {\"{{FUNCTION_NAME}}\", \"([B)[B\", (void *) {{FUNCTION_NAME}} }") +
+          code_.SetValue("FUNCTION_NAME", "_" + call.name);
+          code_ += std::string("  {\"{{FUNCTION_NAME}}\", \"([B)[B\", (void *) {{FUNCTION_NAME}} }") +
                   (i == service_def.calls.vec.size() - 1 ? "" : ",");
       }
-      jni_code += "};";
-      jni_code += "";
+      code_ += "};";
+      code_ += "";
 
-      jni_code += "jint JNICALL JNI_OnLoad(JavaVM *vm, void *unused) {";
-      jni_code += "  JNIEnv *env = NULL;";
-      jni_code += "  LOGI(VERSION_STR);";
-      jni_code += "";
-      jni_code += "  if (vm->GetEnv((void **) &env, JNI_VERSION_1_6) != JNI_OK) {";
-      jni_code += "    LOGE(\"GetEnv failed!\");";
-      jni_code += "    return -1;";
-      jni_code += "  }";
-      jni_code += "";
-      jni_code += "  jclass cls = env->FindClass(JAVA_CLASS_PATH);";
-      jni_code += "  if (!cls) {";
-      jni_code += "    LOGE(\"FindClass %s failed!\", JAVA_CLASS_PATH);";
-      jni_code += "    return -1;";
-      jni_code += "  }";
-      jni_code += "";
-      jni_code += "  int native_count = sizeof(methods) / sizeof(methods[0]);";
-      jni_code += "  LOGD(\"register native method for class %s\", JAVA_CLASS_PATH);";
-      jni_code += "  for (int i = 0; i < native_count; ++i) {";
-      jni_code += "    LOGD(\"method: %s %s\", methods[i].name, methods[i].signature);";
-      jni_code += "  }";
-      jni_code += "";
-      jni_code += "  if (env->RegisterNatives(cls, methods, native_count) < 0) {";
-      jni_code += "    LOGE(\"RegisterNatives failed!\");";
-      jni_code += "    env->DeleteLocalRef(cls);";
-      jni_code += "    return -1;";
-      jni_code += "  }";
-      jni_code += "";
-      jni_code += "  env->DeleteLocalRef(cls);";
-      jni_code += "  LOGI(\"JNI_OnLoad ok.\");";
-      jni_code += "  return JNI_VERSION_1_6;";
-      jni_code += "}";
+      code_ += "jint JNICALL JNI_OnLoad(JavaVM *vm, void *unused) {";
+      code_ += "  JNIEnv *env = NULL;";
+      code_ += "  LOGI(VERSION_STR);";
+      code_ += "";
+      code_ += "  if (vm->GetEnv((void **) &env, JNI_VERSION_1_6) != JNI_OK) {";
+      code_ += "    LOGE(\"GetEnv failed!\");";
+      code_ += "    return -1;";
+      code_ += "  }";
+      code_ += "";
+      code_ += "  jclass cls = env->FindClass(JAVA_CLASS_PATH);";
+      code_ += "  if (!cls) {";
+      code_ += "    LOGE(\"FindClass %s failed!\", JAVA_CLASS_PATH);";
+      code_ += "    return -1;";
+      code_ += "  }";
+      code_ += "";
+      code_ += "  int native_count = sizeof(methods) / sizeof(methods[0]);";
+      code_ += "  LOGD(\"register native method for class %s\", JAVA_CLASS_PATH);";
+      code_ += "  for (int i = 0; i < native_count; ++i) {";
+      code_ += "    LOGD(\"method: %s %s\", methods[i].name, methods[i].signature);";
+      code_ += "  }";
+      code_ += "";
+      code_ += "  if (env->RegisterNatives(cls, methods, native_count) < 0) {";
+      code_ += "    LOGE(\"RegisterNatives failed!\");";
+      code_ += "    env->DeleteLocalRef(cls);";
+      code_ += "    return -1;";
+      code_ += "  }";
+      code_ += "";
+      code_ += "  env->DeleteLocalRef(cls);";
+      code_ += "  LOGI(\"JNI_OnLoad ok.\");";
+      code_ += "  return JNI_VERSION_1_6;";
+      code_ += "}";
 
-      code_ += jni_code.ToString();
       const auto jni_cpp_name = jni_file_name + ".cpp";
       const auto jni_file_path = path_ + jni_cpp_name;
       if (!SaveFile(jni_file_path.c_str(), code_.ToString(), false))
@@ -1211,7 +1222,7 @@ class CppGenerator : public BaseGenerator {
     code_ += "{{PREFIX}}{{PARAM_TYPE}}{{PARAM_NAME}} = {{PARAM_VALUE}}{{POSTFIX}}";
   }
 
-  void GenStringFieldVar(const FieldDef &field, const std::string &prefix) {
+  void GenStringVectorOffset(const FieldDef &field, const std::string &prefix) {
       code_.SetValue("PRE", prefix);
       code_.SetValue("PARAM_NAME", field.name);
       if (field.value.type.base_type == BASE_TYPE_STRING) {
@@ -1668,7 +1679,7 @@ class CppGenerator : public BaseGenerator {
          it != struct_def.fields.vec.end(); ++it) {
       const auto &field = **it;
       if (!field.deprecated)
-          GenStringFieldVar(field, "    ");
+          GenStringVectorOffset(field, "    ");
     }
     code_ += "    start_ = fbb_.StartTable();";
     for (size_t size = struct_def.sortbysize ? sizeof(largest_scalar_t) : 1;

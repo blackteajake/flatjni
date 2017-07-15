@@ -2,6 +2,7 @@
 #include <jni.h>
 #include <android/log.h>
 #include "hello.h"
+#include "hello_rpc.h"
 
 #define TAG "hello_jni"
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, ##__VA_ARGS__)
@@ -12,33 +13,6 @@
 #define JAVA_CLASS_PATH "com/github/jekinchen/flatjni/Greeter"
 using namespace com::github::jekinchen::flatjni;
 using namespace flatbuffers;
-
-
-static HelloReplyBuilder *hello(const HelloRequest *request) {
-  //implements your code here
-  //...
-  return new HelloReplyBuilder(/* pass reply argments here */); //or return null
-}
-
-static SumResultBuilder *sum(const SumParam *request) {
-  //implements your code here
-  //...
-  return new SumResultBuilder(/* pass reply argments here */); //or return null
-}
-
-static UserBuilder *echo(const User *request) {
-  //implements your code here
-  //...
-  std::vector<int8_t> data;
-  for (auto it = request->voiceData()->begin();
-          it != request->voiceData()->end(); ++it) {
-    data.push_back(*it);
-  }
-  return new UserBuilder(request->id(),
-                         request->name() == nullptr ? nullptr : request->name()->c_str(),
-  request->age(), request->isBoy(), &data, request->timestamp()); //or return null
-}
-
 
 
 static jbyteArray _hello(JNIEnv *env, jclass cls, jbyteArray req) {
@@ -128,4 +102,3 @@ jint JNICALL JNI_OnLoad(JavaVM *vm, void *unused) {
   LOGI("JNI_OnLoad ok.");
   return JNI_VERSION_1_6;
 }
-
