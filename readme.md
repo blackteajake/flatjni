@@ -53,7 +53,7 @@ Getting Started
 
    Save as file `hello.fbs`. 
 
-   Note: `FlatJNI` supports scalar and string filed types: 
+   Note: all supported filed types: 
 
    ```
    8 bit: byte, ubyte, bool
@@ -61,6 +61,7 @@ Getting Started
    32 bit: int, uint, float
    64 bit: long, ulong, double
    string: UTF-8 or 7-bit ASCII
+   [byte]: byte array
    ```
 
 4. Generate JNI Code template:
