@@ -98,30 +98,28 @@ Getting Started
    │   └── flatbuffers.h
    ├── hello.h
    └── hello_jni.cpp
+   └── hello_rpc.h
    ```
 
-   Open and edit `hello_jni.cpp`, which let you implement all RPC calls naturally:
+   Open and edit `hello_rpc.h`, which let you implement all RPC calls naturally:
 
    ```c++
-   //...
+   #include <jni.h>
+   #include "hello.h"
    using namespace com::github::jekinchen::flatjni;
    using namespace flatbuffers;
 
    static HelloReplyBuilder *hello(const HelloRequest *request) {
      //implements your code here
-     std::string greeting("Hello ");
-     greeting.append(request->name() == NULL ? "NULL" : request->name()->c_str());
-     return new HelloReplyBuilder(greeting.c_str()); //or return null
+     //...
+     return new HelloReplyBuilder(/* pass reply argments here */); //or return null
    }
 
    static SumResultBuilder *sum(const SumParam *request) {
      //implements your code here
-     //return new SumResultBuilder(request->i() + request->j()); //or return null
-     return NULL;
+     //...
+     return new SumResultBuilder(/* pass reply argments here */); //or return null
    }
-
-   //JNI code you don't need to care about ...
-   //...
    ```
 
 5. Build `.so` file which can be used in Android project: 
@@ -160,8 +158,9 @@ Getting Started
                public void onClick(View v) {
                    HelloReply replay = Greeter.hello("jk"); //call C++ method
                    SumResult result = Greeter.sum(1, 2); //call C++ method
-                   String text = replay != null ? replay.greeting() : "hello replay null";
-                   text += result != null ? ("sum(1,2)=" + result.result()) : ", sum reply null";
+                   String text = replay != null ? replay.greeting() : "hello()=null";
+                   text += "\n";
+                   text += result != null ? ("sum(1,2)=" + result.result()) : "sum(1,2)=null";
                    tv.setText(text);
                }
            });
@@ -246,5 +245,7 @@ Todo
 =================
 Call Java native method in C++.
 
-Any suggestions are Welcome!
+Contribution
 =================
+Jekin Chen : jekinchen@qq.com
+Any suggestions are Welcome!
