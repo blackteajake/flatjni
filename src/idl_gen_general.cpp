@@ -95,9 +95,9 @@ const LanguageParameters& GetLangParams(IDLOptions::Language lang) {
       "",
       "",
       "",
-      "import java.nio.*;\nimport java.lang.*;\nimport java.util.*;\n"
+      "import java.nio.*;\nimport java.lang.*;\n"
         "import android.support.annotation.Nullable;\n"
-        "import com.google.flatbuffers.*;\n\n@SuppressWarnings(\"unused\")\n",
+        "import com.google.flatbuffers.*;\n\n@SuppressWarnings(\"unused,JniMissingFunction\")\n",
       {
         "/**",
         " *",
@@ -976,7 +976,7 @@ void GenStruct(StructDef &struct_def, std::string *code_ptr) {
           code += lang_.getter_prefix;
           member_suffix += lang_.getter_suffix;
           code += offset_prefix + getter + "(o + " + lang_.accessor_prefix;
-          code += "bb_pos) : null";
+          code += "bb_pos) : \"\""; //return empty string instead of null
           break;
         case BASE_TYPE_VECTOR: {
           auto vectortype = field.value.type.VectorType();
@@ -1391,9 +1391,8 @@ void GenStruct(StructDef &struct_def, std::string *code_ptr) {
 }
 
     void GenJNITemplate(ServiceDef &service_def, std::string &code) {
-        GenComment(service_def.doc_comment, &code, &lang_.comment_config);
-        // Generate a java final class by RPC service name
-        code += "public final class " + service_def.name + " {\n";
+        // Generate a java wrapper class for all RPCs (native methods)
+        code += "public class " + service_def.name + " {\n";
 
         code += "  static { System.loadLibrary(\"" + service_def.name + "\");"
                 + " }\n\n";
@@ -1407,7 +1406,6 @@ void GenStruct(StructDef &struct_def, std::string *code_ptr) {
                  it_struct != parser_.structs_.vec.end(); ++it_struct) {
                 StructDef &struct_def = **it_struct;
                 if (struct_def.name != call.request->name) continue;
-                code += "  @Nullable\n";
                 code += "  public static " + call.response->name + " " + call.name + "(";
                 for (auto it_field = struct_def.fields.vec.begin();
                      it_field != struct_def.fields.vec.end(); ++it_field) {
@@ -1417,7 +1415,7 @@ void GenStruct(StructDef &struct_def, std::string *code_ptr) {
                         code += ",\n        ";
 
                     if (field.value.type.base_type == BASE_TYPE_STRING)
-                        code += "@Nullable String";
+                        code += "String";
                     else if (field.value.type.base_type == BASE_TYPE_VECTOR
                              && IsByte(field.value.type.VectorType().base_type))
                         code += "@Nullable byte[]";
