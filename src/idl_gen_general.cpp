@@ -1027,6 +1027,19 @@ void GenStruct(StructDef &struct_def, std::string *code_ptr) {
       code += lang_.accessor_prefix + "__vector_len(o) : 0; ";
       code += lang_.getter_suffix;
       code += "}\n";
+
+      //Generate a scalar array accessor
+
+      if (lang_.language != IDLOptions::kCSharp) {
+          auto vectortype = field.value.type.VectorType();
+          auto typedecl = GenTypeBasic(vectortype);
+          auto funcname = MakeCamel(field.name, lang_.first_camel_upper);
+          code += "  public " + typedecl + "[] " + funcname + "() { " +
+                  typedecl + "[] a = new " + typedecl + "[" + funcname +
+                  "Length()]; for(int i=0; i<" + funcname + "Length(); ++i) a[i] = " +
+                  funcname + "(i); return a; }\n";
+      }
+
       // See if we should generate a by-key accessor.
       if (field.value.type.element == BASE_TYPE_STRUCT &&
           !field.value.type.struct_def->fixed) {

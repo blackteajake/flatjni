@@ -292,7 +292,6 @@ class CppGenerator : public BaseGenerator {
       code_ += "#define {{HEADER_DEFNAME}}";
       code_ += "";
       code_ += "#include <jni.h>";
-      code_ += "#include <assert.h>";
       code_ += "#include \"{{INCLUDE_NAME}}\"";
       code_ += "";
       code_ += "using namespace {{CPP_NAMESPACE}};";
@@ -304,10 +303,8 @@ class CppGenerator : public BaseGenerator {
           code_.SetValue("CALL_NAME", call.name);
           code_.SetValue("CALL_REQ_NAME", call.request->name);
           code_.SetValue("CALL_REP_NAME", call.response->name);
-          code_ += "static {{CALL_REP_NAME}}Builder *{{CALL_NAME}}(const {{CALL_REQ_NAME}} *request) {";
-          code_ += "  assert(false); //need implements";
-          code_ += "  return new {{CALL_REP_NAME}}Builder(/* pass reply argments here */);";
-          code_ += "}";
+          code_ += "{{CALL_REP_NAME}}Builder *{{CALL_NAME}}(const {{CALL_REQ_NAME}} *request); ";
+          code_ += "//{ return new {{CALL_REP_NAME}}Builder(/* argments */);}";
           code_ += "";
       }
       code_ += "";
