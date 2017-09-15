@@ -95,9 +95,11 @@ const LanguageParameters& GetLangParams(IDLOptions::Language lang) {
       "",
       "",
       "",
-      "import java.nio.*;\nimport java.lang.*;\n"
-        "import android.support.annotation.Nullable;\n"
-        "import com.google.flatbuffers.*;\n\n@SuppressWarnings(\"unused,JniMissingFunction\")\n",
+      "import java.nio.*;\n"
+        "import java.lang.*;\n"
+        "import java.util.concurrent.ConcurrentLinkedQueue;\n"
+        "import com.google.flatbuffers.*;\n\n"
+        "@SuppressWarnings(\"unused,JniMissingFunction\")\n",
       {
         "/**",
         " *",
@@ -1409,7 +1411,7 @@ void GenStruct(StructDef &struct_def, std::string *code_ptr) {
 
         code += "  static { System.loadLibrary(\"" + service_def.name + "\");"
                 + " }\n\n";
-
+        std::vector<std::string> callbackMembers;
         for (auto it = service_def.calls.vec.begin();
              it != service_def.calls.vec.end(); ++it) {
             RPCCall &call = **it;
@@ -1470,9 +1472,26 @@ void GenStruct(StructDef &struct_def, std::string *code_ptr) {
                 code += "    return " + call.response->name + ".getRootAs"
                         + call.response->name + "(ByteBuffer.wrap(reply));\n";
                 code += "  }\n\n";
+
+                //genarate callback (call from cpp)
+                callbackMembers.push_back(call.response->name);
+                code += "  public static void on" + call.response->name + "(byte[] ba) {\n";
+                code += "    for(CppCallback cb : mCallbacks) cb.on" + call.response->name +
+                        "(ba == null? null : " + call.response->name +
+                        ".getRootAs" + call.response->name + "(ByteBuffer.wrap(ba)));\n";
+                code += "  }\n\n";
+
                 break;
             }
         }
+
+        code += "  public static class CppCallback {\n";
+        for (auto& s: callbackMembers) code += "    protected void on" + s + "(" + s + " rs) {}\n";
+        code += "  }\n\n";
+
+        code += "  private static ConcurrentLinkedQueue<CppCallback> mCallbacks = new ConcurrentLinkedQueue<>();\n\n";
+        code += "  public static void addCallback(CppCallback cb) { mCallbacks.add(cb); }\n\n";
+        code += "  public static void removeCallback(CppCallback cb) { mCallbacks.remove(cb); }\n\n";
 
         // Wrap all RPC method to native method
         for (auto it = service_def.calls.vec.begin();

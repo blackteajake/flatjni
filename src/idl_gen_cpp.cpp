@@ -300,6 +300,13 @@ class CppGenerator : public BaseGenerator {
       for (auto it = service_def.calls.vec.begin();
            it != service_def.calls.vec.end(); ++it){
           const RPCCall &call = **it;
+          code_.SetValue("CALL_REP_NAME", call.response->name);
+          code_ += "extern void sendToJava({{CALL_REP_NAME}}Builder*);";
+      }
+      code_ += "";
+      for (auto it = service_def.calls.vec.begin();
+           it != service_def.calls.vec.end(); ++it){
+          const RPCCall &call = **it;
           code_.SetValue("CALL_NAME", call.name);
           code_.SetValue("CALL_REQ_NAME", call.request->name);
           code_.SetValue("CALL_REP_NAME", call.response->name);
@@ -340,6 +347,7 @@ class CppGenerator : public BaseGenerator {
       code_ += "#include <stdio.h>";
       code_ += "#include <jni.h>";
       code_ += "#include <android/log.h>";
+      code_ += "#include <assert.h>";
       code_ += "";
       code_ += "#define TAG \"{{LOG_TAG}}\"";
       code_ += "#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, ##__VA_ARGS__)";
@@ -354,12 +362,42 @@ class CppGenerator : public BaseGenerator {
       code_ += "using namespace flatbuffers;";
       code_ += "";
       code_ += R"(
+static JavaVM * g_jvm = 0;
+static jclass g_clazz;
+static thread_local JNIEnv* thread_env = nullptr;
+
+class AutoAttacher {
+public:
+AutoAttacher() {
+    LOGD("AttachCurrentThread");
+    JNIEnv *env;
+    int rc = g_jvm->AttachCurrentThread(&env, nullptr);
+    assert(rc == JNI_OK);
+    thread_env = env;
+}
+
+~AutoAttacher() {
+    if (thread_env != nullptr) {
+        LOGD("DetachCurrentThread");
+        int rc = g_jvm->DetachCurrentThread();
+        assert(rc == JNI_OK);
+    }
+}
+};
+
+static JNIEnv *getEnv() {
+  if (thread_env == nullptr) { thread_local AutoAttacher attacher; }
+  return thread_env;
+})";
+      code_ += "";
+      code_ += R"(
 #define BOOST_PP_CAT(a, b) BOOST_PP_CAT_I(a, b)
 #define BOOST_PP_CAT_I(a, b) BOOST_PP_CAT_II(a ## b)
 #define BOOST_PP_CAT_II(res) res
 
 #define JNI_FUNC_DECL(P, B, F) \
 static jbyteArray BOOST_PP_CAT(_, F) (JNIEnv *env, jclass cls, jbyteArray req) { \
+    thread_env = env; \
     const char *buf = (const char *) env->GetByteArrayElements(req, NULL); \
     if (buf == nullptr) return nullptr; \
     B *builder = F (GetRoot<P>(buf)); \
@@ -376,6 +414,22 @@ static jbyteArray BOOST_PP_CAT(_, F) (JNIEnv *env, jclass cls, jbyteArray req) {
 }
 )";
       code_ += "";
+      code_ += R"(
+#define JAVA_CALLBACK_DECL(B, M) \
+void sendToJava(B* builder) { \
+   JNIEnv* env = getEnv(); \
+   if (builder == nullptr) { \
+       env->CallStaticVoidMethod(g_clazz, M, nullptr); \
+       return; \
+   } \
+   const FlatBufferBuilder &bb = builder->fbb(); \
+   jbyteArray byteArray = env->NewByteArray(bb.GetSize()); \
+   env->SetByteArrayRegion(byteArray, 0, bb.GetSize(), (const jbyte *) bb.GetBufferPointer()); \
+   delete builder; \
+   env->CallStaticVoidMethod(g_clazz, M, byteArray); \
+   env->DeleteLocalRef(byteArray); \
+})";
+      code_ += "";
       for (auto it = service_def.calls.vec.begin();
            it != service_def.calls.vec.end(); ++it){
           const RPCCall &call = **it;
@@ -384,10 +438,12 @@ static jbyteArray BOOST_PP_CAT(_, F) (JNIEnv *env, jclass cls, jbyteArray req) {
           code_.SetValue("CALL_REQ_NAME", call.request->name);
           code_.SetValue("CALL_REP_NAME", call.response->name);
           code_ += "JNI_FUNC_DECL({{CALL_REQ_NAME}}, {{CALL_REP_NAME}}Builder, {{FUNCTION_NAME}})";
+          code_ += "static jmethodID g_{{CALL_REP_NAME}};";
+          code_ += "JAVA_CALLBACK_DECL({{CALL_REP_NAME}}Builder, g_{{CALL_REP_NAME}})";
           code_ += "";
       }
-
       code_ += "";
+
       code_ += "static JNINativeMethod methods[] = {";
       for (unsigned int i=0; i<service_def.calls.vec.size(); ++i){
           const RPCCall &call = *(service_def.calls.vec[i]);
@@ -413,6 +469,18 @@ static jbyteArray BOOST_PP_CAT(_, F) (JNIEnv *env, jclass cls, jbyteArray req) {
       code_ += "    return -1;";
       code_ += "  }";
       code_ += "";
+      for (unsigned int i=0; i<service_def.calls.vec.size(); ++i){
+          const RPCCall &call = *(service_def.calls.vec[i]);
+          code_.SetValue("CALL_REP_NAME", call.response->name);
+
+          code_ += "  g_{{CALL_REP_NAME}} = env->GetStaticMethodID(cls, \"on{{CALL_REP_NAME}}\", \"([B)V\");";
+          code_ += "  if (!g_{{CALL_REP_NAME}}) {";
+          code_ += "    LOGE(\"GetStaticMethodID failed!\");";
+          code_ += "    return -1;";
+          code_ += "  }";
+          code_ += "";
+      }
+      code_ += "";
       code_ += "  int native_count = sizeof(methods) / sizeof(methods[0]);";
       code_ += "  LOGD(\"register native method for class %s\", JAVA_CLASS_PATH);";
       code_ += "  for (int i = 0; i < native_count; ++i) {";
@@ -424,6 +492,9 @@ static jbyteArray BOOST_PP_CAT(_, F) (JNIEnv *env, jclass cls, jbyteArray req) {
       code_ += "    env->DeleteLocalRef(cls);";
       code_ += "    return -1;";
       code_ += "  }";
+      code_ += "";
+      code_ += "  g_jvm = vm;";
+      code_ += "  g_clazz = static_cast<jclass>(env->NewGlobalRef(cls));";
       code_ += "";
       code_ += "  env->DeleteLocalRef(cls);";
       code_ += "  LOGI(\"JNI_OnLoad ok.\");";
