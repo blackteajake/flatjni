@@ -300,8 +300,9 @@ class CppGenerator : public BaseGenerator {
       for (auto it = service_def.calls.vec.begin();
            it != service_def.calls.vec.end(); ++it){
           const RPCCall &call = **it;
+          code_.SetValue("CALL_NAME", call.name);
           code_.SetValue("CALL_REP_NAME", call.response->name);
-          code_ += "extern void sendToJava({{CALL_REP_NAME}}Builder*);";
+          code_ += "extern void on{{CALL_NAME}}({{CALL_REP_NAME}}Builder*);";
       }
       code_ += "";
       for (auto it = service_def.calls.vec.begin();
@@ -348,8 +349,10 @@ class CppGenerator : public BaseGenerator {
       code_ += "#include <jni.h>";
       code_ += "#include <android/log.h>";
       code_ += "#include <assert.h>";
+      code_ += "#include <pthread.h>";
       code_ += "";
       code_ += "#define TAG \"{{LOG_TAG}}\"";
+      code_ += "#define LOGV(...) __android_log_print(ANDROID_LOG_VERBOSE, TAG, ##__VA_ARGS__)";
       code_ += "#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, ##__VA_ARGS__)";
       code_ += "#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, ##__VA_ARGS__)";
       code_ += "#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, ##__VA_ARGS__)";
@@ -364,31 +367,65 @@ class CppGenerator : public BaseGenerator {
       code_ += R"(
 static JavaVM * g_jvm = 0;
 static jclass g_clazz;
-static thread_local JNIEnv* thread_env = nullptr;
+
+static pthread_key_t _attacher_key;
 
 class AutoAttacher {
 public:
 AutoAttacher() {
-    LOGD("AttachCurrentThread");
-    JNIEnv *env;
-    int rc = g_jvm->AttachCurrentThread(&env, nullptr);
-    assert(rc == JNI_OK);
-    thread_env = env;
+   LOGV("AttachCurrentThread...");
+   int rc = g_jvm->AttachCurrentThread(&_env, nullptr);
+   assert(rc == JNI_OK);
+   if(rc != JNI_OK) {
+       LOGE("AttachCurrentThread failed.");
+       abort();
+       return;
+   }
+   LOGV("AttachCurrentThread ok.");
 }
 
 ~AutoAttacher() {
-    if (thread_env != nullptr) {
-        LOGD("DetachCurrentThread");
-        int rc = g_jvm->DetachCurrentThread();
-        assert(rc == JNI_OK);
-    }
+   LOGV("DettachCurrentThread...");
+   int rc = g_jvm->DetachCurrentThread();
+   assert(rc == JNI_OK);
+   if(rc != JNI_OK) {
+       LOGE("DettachCurrentThread failed.");
+       abort();
+       return;
+   }
+   LOGV("DettachCurrentThread ok.");
 }
+
+
+JNIEnv *getEnv() {
+   assert(_env != nullptr);
+   return _env;
+}
+
+private:
+  JNIEnv* _env = nullptr;
 };
 
-static JNIEnv *getEnv() {
-  if (thread_env == nullptr) { thread_local AutoAttacher attacher; }
-  return thread_env;
-})";
+
+//https://github.com/android-ndk/ndk/issues/360
+//static thread_local AutoAttacher attacher;
+
+static void attacher_destructor(void *data) {
+   if (data != nullptr) {
+       AutoAttacher* attacher = (AutoAttacher *) data;
+       delete attacher;
+   }
+}
+
+static inline JNIEnv* getEnv() {
+   AutoAttacher* attacher = (AutoAttacher*) pthread_getspecific(_attacher_key);
+   if (attacher == nullptr) {
+       attacher = new AutoAttacher();
+       pthread_setspecific(_attacher_key, attacher);
+   }
+   return attacher->getEnv();
+}
+)";
       code_ += "";
       code_ += R"(
 #define BOOST_PP_CAT(a, b) BOOST_PP_CAT_I(a, b)
@@ -397,7 +434,6 @@ static JNIEnv *getEnv() {
 
 #define JNI_FUNC_DECL(P, B, F) \
 static jbyteArray BOOST_PP_CAT(_, F) (JNIEnv *env, jclass cls, jbyteArray req) { \
-    thread_env = env; \
     const char *buf = (const char *) env->GetByteArrayElements(req, NULL); \
     if (buf == nullptr) return nullptr; \
     B *builder = F (GetRoot<P>(buf)); \
@@ -415,8 +451,8 @@ static jbyteArray BOOST_PP_CAT(_, F) (JNIEnv *env, jclass cls, jbyteArray req) {
 )";
       code_ += "";
       code_ += R"(
-#define JAVA_CALLBACK_DECL(B, M) \
-void sendToJava(B* builder) { \
+#define JAVA_CALLBACK_DECL(F, B, M) \
+void BOOST_PP_CAT(on, F) (B* builder) { \
    JNIEnv* env = getEnv(); \
    if (builder == nullptr) { \
        env->CallStaticVoidMethod(g_clazz, M, nullptr); \
@@ -438,8 +474,8 @@ void sendToJava(B* builder) { \
           code_.SetValue("CALL_REQ_NAME", call.request->name);
           code_.SetValue("CALL_REP_NAME", call.response->name);
           code_ += "JNI_FUNC_DECL({{CALL_REQ_NAME}}, {{CALL_REP_NAME}}Builder, {{FUNCTION_NAME}})";
-          code_ += "static jmethodID g_{{CALL_REP_NAME}};";
-          code_ += "JAVA_CALLBACK_DECL({{CALL_REP_NAME}}Builder, g_{{CALL_REP_NAME}})";
+          code_ += "static jmethodID g_on{{CALL_NAME}};";
+          code_ += "JAVA_CALLBACK_DECL({{CALL_NAME}}, {{CALL_REP_NAME}}Builder, g_on{{CALL_NAME}})";
           code_ += "";
       }
       code_ += "";
@@ -458,6 +494,9 @@ void sendToJava(B* builder) { \
       code_ += "  JNIEnv *env = NULL;";
       code_ += "  LOGI(VERSION_STR);";
       code_ += "";
+      code_ += "  pthread_key_create(&_attacher_key, attacher_destructor);";
+      code_ += "  pthread_setspecific(_attacher_key, nullptr);";
+      code_ += "";
       code_ += "  if (vm->GetEnv((void **) &env, JNI_VERSION_1_6) != JNI_OK) {";
       code_ += "    LOGE(\"GetEnv failed!\");";
       code_ += "    return -1;";
@@ -471,10 +510,10 @@ void sendToJava(B* builder) { \
       code_ += "";
       for (unsigned int i=0; i<service_def.calls.vec.size(); ++i){
           const RPCCall &call = *(service_def.calls.vec[i]);
-          code_.SetValue("CALL_REP_NAME", call.response->name);
+          code_.SetValue("CALL_NAME", call.name);
 
-          code_ += "  g_{{CALL_REP_NAME}} = env->GetStaticMethodID(cls, \"on{{CALL_REP_NAME}}\", \"([B)V\");";
-          code_ += "  if (!g_{{CALL_REP_NAME}}) {";
+          code_ += "  g_on{{CALL_NAME}} = env->GetStaticMethodID(cls, \"on{{CALL_NAME}}\", \"([B)V\");";
+          code_ += "  if (!g_on{{CALL_NAME}}) {";
           code_ += "    LOGE(\"GetStaticMethodID failed!\");";
           code_ += "    return -1;";
           code_ += "  }";

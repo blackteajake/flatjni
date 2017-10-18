@@ -1431,9 +1431,8 @@ void GenStruct(StructDef &struct_def, std::string *code_ptr) {
 
                     if (field.value.type.base_type == BASE_TYPE_STRING)
                         code += "String";
-                    else if (field.value.type.base_type == BASE_TYPE_VECTOR
-                             && IsByte(field.value.type.VectorType().base_type))
-                        code += "@Nullable byte[]";
+                    else if (field.value.type.base_type == BASE_TYPE_VECTOR)
+                        code += GenTypeBasic(DestinationType(field.value.type, true)) + "[]";
                     else
                         code += GenTypeBasic(DestinationType(field.value.type, false));
 
@@ -1451,13 +1450,13 @@ void GenStruct(StructDef &struct_def, std::string *code_ptr) {
                          it_field != struct_def.fields.vec.end(); ++it_field) {
                         FieldDef &field = **it_field;
                         if (field.deprecated) continue;
+
                         code += ",\n        ";
 
                         if (field.value.type.base_type == BASE_TYPE_STRING)
                             code += field.name
                                     + " == null? 0 : builder.createString(" + field.name + ")";
-                        else if (field.value.type.base_type == BASE_TYPE_VECTOR
-                                 && IsByte(field.value.type.VectorType().base_type))
+                        else if (field.value.type.base_type == BASE_TYPE_VECTOR)
                             code += field.name
                                     + " == null? 0 : " + struct_def.name + ".create"
                                     + MakeCamel(field.name) + "Vector(builder, " + field.name + ")";
@@ -1474,9 +1473,9 @@ void GenStruct(StructDef &struct_def, std::string *code_ptr) {
                 code += "  }\n\n";
 
                 //genarate callback (call from cpp)
-                callbackMembers.push_back(call.response->name);
-                code += "  public static void on" + call.response->name + "(byte[] ba) {\n";
-                code += "    for(CppCallback cb : mCallbacks) cb.on" + call.response->name +
+                callbackMembers.push_back("    protected void on" + call.name + "(" + call.response->name + " rs) {}");
+                code += "  public static void on" + call.name + "(byte[] ba) {\n";
+                code += "    for(CppCallback cb : mCallbacks) cb.on" + call.name +
                         "(ba == null? null : " + call.response->name +
                         ".getRootAs" + call.response->name + "(ByteBuffer.wrap(ba)));\n";
                 code += "  }\n\n";
@@ -1486,7 +1485,7 @@ void GenStruct(StructDef &struct_def, std::string *code_ptr) {
         }
 
         code += "  public static class CppCallback {\n";
-        for (auto& s: callbackMembers) code += "    protected void on" + s + "(" + s + " rs) {}\n";
+        for (auto& s: callbackMembers) code += s + "\n";
         code += "  }\n\n";
 
         code += "  private static ConcurrentLinkedQueue<CppCallback> mCallbacks = new ConcurrentLinkedQueue<>();\n\n";
