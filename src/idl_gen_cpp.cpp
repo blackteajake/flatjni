@@ -365,106 +365,110 @@ class CppGenerator : public BaseGenerator {
       code_ += "using namespace flatbuffers;";
       code_ += "";
       code_ += R"(
-static JavaVM * g_jvm = 0;
-static jclass g_clazz;
 
-static pthread_key_t _attacher_key;
+               static JavaVM * g_jvm = 0;
+               static jclass g_clazz;
+               static pthread_key_t _attacher_key;
 
-class AutoAttacher {
-public:
-AutoAttacher() {
-   LOGV("AttachCurrentThread...");
-   int rc = g_jvm->AttachCurrentThread(&_env, nullptr);
-   assert(rc == JNI_OK);
-   if(rc != JNI_OK) {
-       LOGE("AttachCurrentThread failed.");
-       abort();
-       return;
-   }
-   LOGV("AttachCurrentThread ok.");
-}
+               class AutoAttacher {
+               public:
+               AutoAttacher(JNIEnv* env): _env(env){}
+               AutoAttacher() {
+                  int rc = g_jvm->AttachCurrentThread(&_env, nullptr);
+                  assert(rc == JNI_OK);
+                  if(rc != JNI_OK) {
+                      LOGE("AttachCurrentThread failed.");
+                      abort();
+                      return;
+                  }
+                  _isAttached = true;
+                  LOGV("AttachCurrentThread ok.");
+               }
 
-~AutoAttacher() {
-   LOGV("DettachCurrentThread...");
-   int rc = g_jvm->DetachCurrentThread();
-   assert(rc == JNI_OK);
-   if(rc != JNI_OK) {
-       LOGE("DettachCurrentThread failed.");
-       abort();
-       return;
-   }
-   LOGV("DettachCurrentThread ok.");
-}
+               ~AutoAttacher() {
+                   if (_isAttached) {
+                       int rc = g_jvm->DetachCurrentThread();
+                       assert(rc == JNI_EDETACHED || rc == JNI_OK);
+                       LOGV("DettachCurrentThread ok.");
+                   }
+               }
 
 
-JNIEnv *getEnv() {
-   assert(_env != nullptr);
-   return _env;
-}
+               JNIEnv *getEnv() {
+                  assert(_env != nullptr);
+                  return _env;
+               }
 
-private:
-  JNIEnv* _env = nullptr;
-};
+               private:
+                 JNIEnv* _env = nullptr;
+                 bool _isAttached = false;
+               };
 
 
-//https://github.com/android-ndk/ndk/issues/360
-//static thread_local AutoAttacher attacher;
+               //https://github.com/android-ndk/ndk/issues/360
+               //static thread_local AutoAttacher attacher;
 
-static void attacher_destructor(void *data) {
-   if (data != nullptr) {
-       AutoAttacher* attacher = (AutoAttacher *) data;
-       delete attacher;
-   }
-}
+               static void attacher_destructor(void *data) {
+                  if (data != nullptr) {
+                      AutoAttacher* attacher = (AutoAttacher *) data;
+                      delete attacher;
+                  }
+               }
 
-static inline JNIEnv* getEnv() {
-   AutoAttacher* attacher = (AutoAttacher*) pthread_getspecific(_attacher_key);
-   if (attacher == nullptr) {
-       attacher = new AutoAttacher();
-       pthread_setspecific(_attacher_key, attacher);
-   }
-   return attacher->getEnv();
-}
-)";
-      code_ += "";
-      code_ += R"(
-#define BOOST_PP_CAT(a, b) BOOST_PP_CAT_I(a, b)
-#define BOOST_PP_CAT_I(a, b) BOOST_PP_CAT_II(a ## b)
-#define BOOST_PP_CAT_II(res) res
+               static inline JNIEnv* getEnv() {
+                  AutoAttacher* attacher = (AutoAttacher*) pthread_getspecific(_attacher_key);
+                  if (attacher == nullptr) {
+                      attacher = new AutoAttacher();
+                      pthread_setspecific(_attacher_key, attacher);
+                  }
+                  return attacher->getEnv();
+               }
 
-#define JNI_FUNC_DECL(P, B, F) \
-static jbyteArray BOOST_PP_CAT(_, F) (JNIEnv *env, jclass cls, jbyteArray req) { \
-    const char *buf = (const char *) env->GetByteArrayElements(req, NULL); \
-    if (buf == nullptr) return nullptr; \
-    B *builder = F (GetRoot<P>(buf)); \
-    if (builder == nullptr) { \
-        env->ReleaseByteArrayElements(req, (jbyte *) buf, JNI_ABORT); \
-        return nullptr; \
-    } \
-    const FlatBufferBuilder &bb = builder->fbb(); \
-    jbyteArray byteArray = env->NewByteArray(bb.GetSize()); \
-    env->SetByteArrayRegion(byteArray, 0, bb.GetSize(), (const jbyte *) bb.GetBufferPointer()); \
-    env->ReleaseByteArrayElements(req, (jbyte *) buf, JNI_ABORT); \
-    delete builder; \
-    return byteArray; \
-}
-)";
-      code_ += "";
-      code_ += R"(
-#define JAVA_CALLBACK_DECL(F, B, M) \
-void BOOST_PP_CAT(on, F) (B* builder) { \
-   JNIEnv* env = getEnv(); \
-   if (builder == nullptr) { \
-       env->CallStaticVoidMethod(g_clazz, M, nullptr); \
-       return; \
-   } \
-   const FlatBufferBuilder &bb = builder->fbb(); \
-   jbyteArray byteArray = env->NewByteArray(bb.GetSize()); \
-   env->SetByteArrayRegion(byteArray, 0, bb.GetSize(), (const jbyte *) bb.GetBufferPointer()); \
-   delete builder; \
-   env->CallStaticVoidMethod(g_clazz, M, byteArray); \
-   env->DeleteLocalRef(byteArray); \
-})";
+
+
+               #define BOOST_PP_CAT(a, b) BOOST_PP_CAT_I(a, b)
+               #define BOOST_PP_CAT_I(a, b) BOOST_PP_CAT_II(a ## b)
+               #define BOOST_PP_CAT_II(res) res
+
+               #define JNI_FUNC_DECL(P, B, F) \
+               static jbyteArray BOOST_PP_CAT(_, F) (JNIEnv *env, jclass cls, jbyteArray req) { \
+                   AutoAttacher* attacher = (AutoAttacher*) pthread_getspecific(_attacher_key); \
+                   if (attacher == nullptr) {  \
+                      attacher = new AutoAttacher(env); \
+                      pthread_setspecific(_attacher_key, attacher); \
+                   } \
+                   const char *buf = (const char *) env->GetByteArrayElements(req, NULL); \
+                   if (buf == nullptr) return nullptr; \
+                   B *builder = F (GetRoot<P>(buf)); \
+                   if (builder == nullptr) { \
+                       env->ReleaseByteArrayElements(req, (jbyte *) buf, JNI_ABORT); \
+                       return nullptr; \
+                   } \
+                   const FlatBufferBuilder &bb = builder->fbb(); \
+                   jbyteArray byteArray = env->NewByteArray(bb.GetSize()); \
+                   env->SetByteArrayRegion(byteArray, 0, bb.GetSize(), (const jbyte *) bb.GetBufferPointer()); \
+                   env->ReleaseByteArrayElements(req, (jbyte *) buf, JNI_ABORT); \
+                   delete builder; \
+                   return byteArray; \
+               }
+
+
+
+               #define JAVA_CALLBACK_DECL(F, B, M) \
+               void BOOST_PP_CAT(on, F) (B* builder) { \
+                  JNIEnv* env = getEnv(); \
+                  if (builder == nullptr) { \
+                      env->CallStaticVoidMethod(g_clazz, M, nullptr); \
+                      return; \
+                  } \
+                  const FlatBufferBuilder &bb = builder->fbb(); \
+                  jbyteArray byteArray = env->NewByteArray(bb.GetSize()); \
+                  env->SetByteArrayRegion(byteArray, 0, bb.GetSize(), (const jbyte *) bb.GetBufferPointer()); \
+                  delete builder; \
+                  env->CallStaticVoidMethod(g_clazz, M, byteArray); \
+                  env->DeleteLocalRef(byteArray); \
+               }
+               )";
       code_ += "";
       for (auto it = service_def.calls.vec.begin();
            it != service_def.calls.vec.end(); ++it){
